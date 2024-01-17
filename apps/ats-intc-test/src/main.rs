@@ -5,18 +5,29 @@ use axstd::*;
 
 #[no_mangle]
 fn main() {
-    // test_read_write();
-    test_mmio_region();
+    test_read_write();
+    // test_mmio_region();
 }
 
 pub fn test_read_write() {
-    let a = 0xffffffc00f00_0000 as *mut usize;
-    unsafe { a.write_volatile(0x19990109) };
-    unsafe { a.write_volatile(0x19990110) };
-    let b = 0xffffffc00f00_0008 as *mut usize;
-    println!("read res {:#X}", unsafe { b.read_volatile() });
-    println!("read res {:#X}", unsafe { b.read_volatile() });
-    println!("read res {:#X}", unsafe { b.read_volatile() });
+    let executor_base: usize = 0xffff_ffc0_0f00_0000;
+    let eih_enqueue_10 = (executor_base + 0xff_d000 + 0x80 + 10 * 0x8) as *mut usize;
+    unsafe { eih_enqueue_10.write_volatile(0x19990119) };
+    let ps_0_queue_0 = (executor_base + 0x00_0000 + 0x30) as *mut usize;
+    let ps_0_dequeue = (executor_base + 0x00_0000 + 0x28) as *mut usize;
+
+    unsafe { ps_0_queue_0.write_volatile(0x19990109) };
+    unsafe { ps_0_queue_0.write_volatile(0x19990110) };
+    println!("read res {:#X}", unsafe { ps_0_dequeue.read_volatile() });
+    println!("read res {:#X}", unsafe { ps_0_dequeue.read_volatile() });
+    println!("read res {:#X}", unsafe { ps_0_dequeue.read_volatile() });
+    unsafe { ps_0_queue_0.write_volatile(0x19990109) };
+    unsafe { ps_0_queue_0.write_volatile(0x19990110) };
+    println!("read res {:#X}", unsafe { ps_0_dequeue.read_volatile() });
+    println!("read res {:#X}", unsafe { ps_0_dequeue.read_volatile() });
+    println!("read res {:#X}", unsafe { ps_0_dequeue.read_volatile() });
+
+
 }
 
 pub fn test_mmio_region() {
