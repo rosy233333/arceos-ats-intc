@@ -12,20 +12,20 @@ fn main() {
 pub fn test_read_write() {
     let executor_base: usize = 0xffff_ffc0_0f00_0000;
     let eih_enqueue_10 = (executor_base + 0xff_d000 + 0x80 + 10 * 0x8) as *mut usize;
-    unsafe { eih_enqueue_10.write_volatile(0x19990119) };
+    unsafe { eih_enqueue_10.write_volatile(0x01191999_19990119) };
     let ps_0_queue_0 = (executor_base + 0x00_0000 + 0x30) as *mut usize;
     let ps_0_dequeue = (executor_base + 0x00_0000 + 0x28) as *mut usize;
 
-    unsafe { ps_0_queue_0.write_volatile(0x19990109) };
-    unsafe { ps_0_queue_0.write_volatile(0x19990110) };
-    println!("read res {:#X}", unsafe { ps_0_dequeue.read_volatile() });
-    println!("read res {:#X}", unsafe { ps_0_dequeue.read_volatile() });
-    println!("read res {:#X}", unsafe { ps_0_dequeue.read_volatile() });
-    unsafe { ps_0_queue_0.write_volatile(0x19990109) };
-    unsafe { ps_0_queue_0.write_volatile(0x19990110) };
-    println!("read res {:#X}", unsafe { ps_0_dequeue.read_volatile() });
-    println!("read res {:#X}", unsafe { ps_0_dequeue.read_volatile() });
-    println!("read res {:#X}", unsafe { ps_0_dequeue.read_volatile() });
+    unsafe { ps_0_queue_0.write_volatile(0x01091999_19990109) };
+    unsafe { ps_0_queue_0.write_volatile(0x01101999_19990110) };
+    println!("read res {:#018X}", unsafe { ps_0_dequeue.read_volatile() });
+    println!("read res {:#018X}", unsafe { ps_0_dequeue.read_volatile() });
+    println!("read res {:#018X}", unsafe { ps_0_dequeue.read_volatile() });
+    unsafe { ps_0_queue_0.write_volatile(0x01091999_19990109) };
+    unsafe { ps_0_queue_0.write_volatile(0x01101999_19990110) };
+    println!("read res {:#018X}", unsafe { ps_0_dequeue.read_volatile() });
+    println!("read res {:#018X}", unsafe { ps_0_dequeue.read_volatile() });
+    println!("read res {:#018X}", unsafe { ps_0_dequeue.read_volatile() });
 
 
 }
