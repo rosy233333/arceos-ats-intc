@@ -1,6 +1,10 @@
 #![no_std]
 #![no_main]
 
+extern crate alloc;
+
+use alloc::sync::Arc;
+use ats_intc::{AtsDriver, Task};
 use axstd::*;
 
 #[no_mangle]
@@ -137,4 +141,19 @@ pub fn test_mmio_region() {
         eih_control.write_volatile(0x4444_4444_4444_4444);
         eih_enqueue_k.write_volatile(0x5555_5555_5555_5555);
     }
+
+    pub fn test_lib() {
+        let executor_base: usize = 0xffff_ffc0_0f00_0000;
+        let lite_executor: AtsDriver = AtsDriver::new(executor_base);
+        let task0: Arc<Task> = Arc::new(Task::new(Box::new(empty_future()), 0, ats_intc::TaskType::Other));
+        let task1: Arc<Task> = Arc::new(Task::new(Box::new(empty_future()), 0, ats_intc::TaskType::Other));
+        let task2: Arc<Task> = Arc::new(Task::new(Box::new(empty_future()), 2, ats_intc::TaskType::Other));
+        let task3: Arc<Task> = Arc::new(Task::new(Box::new(empty_future()), 3, ats_intc::TaskType::Other));
+        task1.update_priority(1);
+
+        lite_executor.load_handler(10, task0.as_ref());
+        lite_executor.stask(task3, 0);
+    }
+
+    async fn empty_future() -> i32 {0}
 }
