@@ -29,7 +29,7 @@ impl Executor {
             match self.hw_executor.ftask(self.process_id) {
                 Some(task_ref) => {
                     let task_arc = Task::from_ref(task_ref);
-                    let result: Poll<i32> = task_arc.poll_inner();
+                    let result: Poll<i32> = task_arc.poll_inner(self.hw_executor, self.process_id);
                     println!("executor get result {:?}", result);
                 },
                 None => {
