@@ -2,7 +2,7 @@ use alloc::collections::VecDeque;
 use alloc::sync::Arc;
 use spinlock::SpinRaw;
 
-use crate::{AxRunQueue, AxTaskRef, CurrentTask, RUN_QUEUE};
+use crate::{ats::{ATS_DRIVER, PROCESS_ID}, current, task::{AbsTaskInner, TaskState}, AxTaskRef, CurrentTask};
 
 /// A queue to store sleeping tasks.
 ///
@@ -45,31 +45,34 @@ impl WaitQueue {
         }
     }
 
-    fn cancel_events(&self, curr: CurrentTask) {
+    fn cancel_events(&self, task: AxTaskRef) {
         // A task can be wake up only one events (timer or `notify()`), remove
         // the event from another queue.
-        if curr.in_wait_queue() {
+        if task.in_wait_queue() {
             // wake up by timer (timeout).
             // `RUN_QUEUE` is not locked here, so disable IRQs.
             let _guard = kernel_guard::IrqSave::new();
-            self.queue.lock().retain(|t| !curr.ptr_eq(t));
-            curr.set_in_wait_queue(false);
+            self.queue.lock().retain(|t| !Arc::ptr_eq(&task, t));
+            task.set_in_wait_queue(false);
         }
         #[cfg(feature = "irq")]
-        if curr.in_timer_list() {
+        if task.in_timer_list() {
             // timeout was set but not triggered (wake up by `WaitQueue::notify()`)
-            crate::timers::cancel_alarm(curr.as_task_ref());
+            crate::timers::cancel_alarm(task.as_task_ref());
         }
     }
 
     /// Blocks the current task and put it into the wait queue, until other task
     /// notifies it.
     pub fn wait(&self) {
-        RUN_QUEUE.lock().block_current(|task| {
-            task.set_in_wait_queue(true);
-            self.queue.lock().push_back(task)
-        });
-        self.cancel_events(crate::current());
+        // RUN_QUEUE.lock().block_current(|task| {
+        //     task.set_in_wait_queue(true);
+        //     self.queue.lock().push_back(task)
+        // });
+        let task = crate::current().clone().unwrap();
+        task.set_in_wait_queue(true);
+        self.queue.lock().push_back(task);
+        self.cancel_events(task);
     }
 
     /// Blocks the current task and put it into the wait queue, until the given
@@ -81,17 +84,23 @@ impl WaitQueue {
     where
         F: Fn() -> bool,
     {
+        let cur_task = crate::current().clone().unwrap();
         loop {
-            let mut rq = RUN_QUEUE.lock();
+            // let mut rq = RUN_QUEUE.lock();
+            // if condition() {
+            //     break;
+            // }
+            // rq.block_current(|task| {
+            //     task.set_in_wait_queue(true);
+            //     self.queue.lock().push_back(task);
+            // });
             if condition() {
                 break;
             }
-            rq.block_current(|task| {
-                task.set_in_wait_queue(true);
-                self.queue.lock().push_back(task);
-            });
+            cur_task.set_in_wait_queue(true);
+            self.queue.lock().push_back(cur_task);
         }
-        self.cancel_events(crate::current());
+        self.cancel_events(cur_task);
     }
 
     /// Blocks the current task and put it into the wait queue, until other tasks
@@ -156,9 +165,9 @@ impl WaitQueue {
     /// If `resched` is true, the current task will be preempted when the
     /// preemption is enabled.
     pub fn notify_one(&self, resched: bool) -> bool {
-        let mut rq = RUN_QUEUE.lock();
+        // let mut rq = RUN_QUEUE.lock();
         if !self.queue.lock().is_empty() {
-            self.notify_one_locked(resched, &mut rq)
+            self.notify_one_locked(resched)
         } else {
             false
         }
@@ -170,14 +179,16 @@ impl WaitQueue {
     /// preemption is enabled.
     pub fn notify_all(&self, resched: bool) {
         loop {
-            let mut rq = RUN_QUEUE.lock();
+            // let mut rq = RUN_QUEUE.lock();
             if let Some(task) = self.queue.lock().pop_front() {
                 task.set_in_wait_queue(false);
-                rq.unblock_task(task, resched);
+                // rq.unblock_task(task, resched);
+                task.set_state(TaskState::Ready);
+                ATS_DRIVER.stask(task.as_ref() as *const dyn AbsTaskInner as *const _ as usize, PROCESS_ID, task.get_priority());
             } else {
                 break;
             }
-            drop(rq); // we must unlock `RUN_QUEUE` after unlocking `self.queue`.
+            // drop(rq); // we must unlock `RUN_QUEUE` after unlocking `self.queue`.
         }
     }
 
@@ -186,31 +197,37 @@ impl WaitQueue {
     /// If `resched` is true, the current task will be preempted when the
     /// preemption is enabled.
     pub fn notify_task(&mut self, resched: bool, task: &AxTaskRef) -> bool {
-        let mut rq = RUN_QUEUE.lock();
+        // let mut rq = RUN_QUEUE.lock();
         let mut wq = self.queue.lock();
         if let Some(index) = wq.iter().position(|t| Arc::ptr_eq(t, task)) {
             task.set_in_wait_queue(false);
-            rq.unblock_task(wq.remove(index).unwrap(), resched);
+            // rq.unblock_task(wq.remove(index).unwrap(), resched);
+            task.set_state(TaskState::Ready);
+            ATS_DRIVER.stask(task.as_ref() as *const dyn AbsTaskInner as *const _ as usize, PROCESS_ID, task.get_priority());
             true
         } else {
             false
         }
     }
 
-    pub(crate) fn notify_one_locked(&self, resched: bool, rq: &mut AxRunQueue) -> bool {
+    pub(crate) fn notify_one_locked(&self, resched: bool) -> bool {
         if let Some(task) = self.queue.lock().pop_front() {
             task.set_in_wait_queue(false);
-            rq.unblock_task(task, resched);
+            // rq.unblock_task(task, resched);
+            task.set_state(TaskState::Ready);
+            ATS_DRIVER.stask(task.as_ref() as *const dyn AbsTaskInner as *const _ as usize, PROCESS_ID, task.get_priority());
             true
         } else {
             false
         }
     }
 
-    pub(crate) fn notify_all_locked(&self, resched: bool, rq: &mut AxRunQueue) {
+    pub(crate) fn notify_all_locked(&self, resched: bool) {
         while let Some(task) = self.queue.lock().pop_front() {
             task.set_in_wait_queue(false);
-            rq.unblock_task(task, resched);
+            // rq.unblock_task(task, resched);
+            task.set_state(TaskState::Ready);
+            ATS_DRIVER.stask(task.as_ref() as *const dyn AbsTaskInner as *const _ as usize, PROCESS_ID, task.get_priority());
         }
     }
 }

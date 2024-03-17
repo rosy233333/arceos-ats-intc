@@ -149,8 +149,8 @@ pub extern "C" fn rust_main(cpu_id: usize, dtb: usize) -> ! {
     info!("Initialize platform devices...");
     axhal::platform_init();
 
-    #[cfg(feature = "multitask")]
-    axtask::init_scheduler();
+    // #[cfg(feature = "multitask")]
+    // axtask::init_scheduler();
 
     #[cfg(any(feature = "fs", feature = "net", feature = "display"))]
     {
@@ -189,12 +189,19 @@ pub extern "C" fn rust_main(cpu_id: usize, dtb: usize) -> ! {
         core::hint::spin_loop();
     }
 
-    unsafe { main() };
-
     #[cfg(feature = "multitask")]
-    axtask::exit(0);
+    {
+        axtask::spawn(||{ 
+            unsafe{ 
+                main()
+            } 
+        });
+        axtask::run_executor();
+    }
+    
     #[cfg(not(feature = "multitask"))]
     {
+        unsafe { main() };
         debug!("main task exited: exit_code={}", 0);
         axhal::misc::terminate();
     }

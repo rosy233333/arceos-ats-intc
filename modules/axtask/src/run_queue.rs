@@ -11,9 +11,9 @@ use crate::{AxTaskRef, Scheduler, TaskInner, WaitQueue};
 pub(crate) static RUN_QUEUE: LazyInit<SpinNoIrq<AxRunQueue>> = LazyInit::new();
 
 // TODO: per-CPU
-static EXITED_TASKS: SpinNoIrq<VecDeque<AxTaskRef>> = SpinNoIrq::new(VecDeque::new());
+pub(crate) static EXITED_TASKS: SpinNoIrq<VecDeque<AxTaskRef>> = SpinNoIrq::new(VecDeque::new());
 
-static WAIT_FOR_EXIT: WaitQueue = WaitQueue::new();
+pub(crate) static WAIT_FOR_EXIT: WaitQueue = WaitQueue::new();
 
 #[percpu::def_percpu]
 static IDLE_TASK: LazyInit<AxTaskRef> = LazyInit::new();
@@ -185,7 +185,7 @@ impl AxRunQueue {
             assert!(Arc::strong_count(prev_task.as_task_ref()) > 1);
             assert!(Arc::strong_count(&next_task) >= 1);
 
-            CurrentTask::set_current(prev_task, next_task);
+            // CurrentTask::set_current(prev_task, next_task);
             (*prev_ctx_ptr).switch_to(&*next_ctx_ptr);
         }
     }

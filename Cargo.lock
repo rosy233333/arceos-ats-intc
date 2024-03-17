@@ -522,6 +522,7 @@ dependencies = [
 name = "axtask"
 version = "0.1.0"
 dependencies = [
+ "ats-intc",
  "axconfig",
  "axhal",
  "axtask",
@@ -536,6 +537,14 @@ dependencies = [
  "scheduler",
  "spinlock",
  "timer_list",
+]
+
+[[package]]
+name = "axtask-test"
+version = "0.1.0"
+dependencies = [
+ "axstd",
+ "axtask",
 ]
 
 [[package]]

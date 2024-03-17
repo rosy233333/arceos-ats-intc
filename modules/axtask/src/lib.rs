@@ -35,17 +35,19 @@ cfg_if::cfg_if! {
         extern crate log;
         extern crate alloc;
 
-        mod run_queue;
+        // mod run_queue;
         mod task;
         mod api;
         mod wait_queue;
+        mod ats;
 
         #[cfg(feature = "irq")]
         mod timers;
 
         #[doc(cfg(feature = "multitask"))]
         pub use self::api::*;
-        pub use self::api::{sleep, sleep_until, yield_now};
+        // pub use self::api::{sleep, sleep_until, yield_now};
+        pub use self::api::yield_now;
     } else {
         mod api_s;
         pub use self::api_s::{sleep, sleep_until, yield_now};
