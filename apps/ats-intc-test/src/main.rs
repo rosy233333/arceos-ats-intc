@@ -148,13 +148,18 @@ pub fn test_mmio_region() {
 pub fn test_lib() {
     let executor_base: usize = 0xffff_ffc0_0f00_0000;
     let lite_executor: AtsDriver = AtsDriver::new(executor_base);
-    let task0 = Task::new(Box::pin(empty_future()), 0, ats_intc::TaskType::Other);
-    let task1 = Task::new(Box::pin(empty_future()), 0, ats_intc::TaskType::Other);
-    let task2 = Task::new(Box::pin(empty_future()), 2, ats_intc::TaskType::Other);
-    let task3 = Task::new(Box::pin(empty_future()), 3, ats_intc::TaskType::Other);
-    let task4 = Task::new(Box::pin(empty_future()), 0, ats_intc::TaskType::Other);
+    // let task0 = Task::new(Box::pin(empty_future()), 0, ats_intc::TaskType::Other);
+    // let task1 = Task::new(Box::pin(empty_future()), 0, ats_intc::TaskType::Other);
+    // let task2 = Task::new(Box::pin(empty_future()), 2, ats_intc::TaskType::Other);
+    // let task3 = Task::new(Box::pin(empty_future()), 3, ats_intc::TaskType::Other);
+    // let task4 = Task::new(Box::pin(empty_future()), 0, ats_intc::TaskType::Other);
+    let task0: usize = 0;
+    let task1: usize = 1;
+    let task2: usize = 2;
+    let task3: usize = 3;
+    let task4: usize = 4;
     
-    unsafe { (&*task1.as_ptr()).update_priority(1); }
+    // unsafe { (&*task1.as_ptr()).update_priority(1); }
 
     lite_executor.load_handler(10, task0);
     lite_executor.stask(task3, 0 , 3);
@@ -162,13 +167,19 @@ pub fn test_lib() {
     lite_executor.stask(task1, 0 , 1);
     lite_executor.stask(task4, 0 , 0);
 
-    unsafe {
-        println!("{:?}", (*lite_executor.ftask(0).unwrap().as_ptr()).priority.load(Ordering::Acquire));
-        println!("{:?}", (*lite_executor.ftask(0).unwrap().as_ptr()).priority.load(Ordering::Acquire));
-        println!("{:?}", (*lite_executor.ftask(0).unwrap().as_ptr()).priority.load(Ordering::Acquire));
-        println!("{:?}", (*lite_executor.ftask(0).unwrap().as_ptr()).priority.load(Ordering::Acquire));
-        println!("{:?}", (*lite_executor.ftask(0).unwrap().as_ptr()).priority.load(Ordering::Acquire));
-    }
+    // unsafe {
+    //     println!("{:?}", (*lite_executor.ftask(0).unwrap().as_ptr()).priority.load(Ordering::Acquire));
+    //     println!("{:?}", (*lite_executor.ftask(0).unwrap().as_ptr()).priority.load(Ordering::Acquire));
+    //     println!("{:?}", (*lite_executor.ftask(0).unwrap().as_ptr()).priority.load(Ordering::Acquire));
+    //     println!("{:?}", (*lite_executor.ftask(0).unwrap().as_ptr()).priority.load(Ordering::Acquire));
+    //     println!("{:?}", (*lite_executor.ftask(0).unwrap().as_ptr()).priority.load(Ordering::Acquire));
+    // }
+
+    println!("{:?}", lite_executor.ftask(0).unwrap());
+    println!("{:?}", lite_executor.ftask(0).unwrap());
+    println!("{:?}", lite_executor.ftask(0).unwrap());
+    println!("{:?}", lite_executor.ftask(0).unwrap());
+    // println!("{:?}", lite_executor.ftask(0).unwrap());
 }
 
 async fn empty_future() -> i32 {0}

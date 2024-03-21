@@ -2,7 +2,7 @@ use alloc::collections::VecDeque;
 use alloc::sync::Arc;
 use spinlock::SpinRaw;
 
-use crate::{ats::{ATS_DRIVER, PROCESS_ID}, current, task::{AbsTaskInner, TaskState}, AxTaskRef, CurrentTask};
+use crate::{ats::{ATS_DRIVER, PROCESS_ID}, current, task::{AbsTaskInner, AxTask, TaskState}, AxTaskRef, CurrentTask};
 
 /// A queue to store sleeping tasks.
 ///
@@ -69,9 +69,9 @@ impl WaitQueue {
         //     task.set_in_wait_queue(true);
         //     self.queue.lock().push_back(task)
         // });
-        let task = crate::current().clone().unwrap();
+        let task = crate::current().unwrap();
         task.set_in_wait_queue(true);
-        self.queue.lock().push_back(task);
+        self.queue.lock().push_back(task.clone());
         self.cancel_events(task);
     }
 
@@ -84,7 +84,7 @@ impl WaitQueue {
     where
         F: Fn() -> bool,
     {
-        let cur_task = crate::current().clone().unwrap();
+        let task = crate::current().unwrap();
         loop {
             // let mut rq = RUN_QUEUE.lock();
             // if condition() {
@@ -97,10 +97,10 @@ impl WaitQueue {
             if condition() {
                 break;
             }
-            cur_task.set_in_wait_queue(true);
-            self.queue.lock().push_back(cur_task);
+            task.set_in_wait_queue(true);
+            self.queue.lock().push_back(task.clone());
         }
-        self.cancel_events(cur_task);
+        self.cancel_events(task);
     }
 
     /// Blocks the current task and put it into the wait queue, until other tasks
@@ -184,7 +184,8 @@ impl WaitQueue {
                 task.set_in_wait_queue(false);
                 // rq.unblock_task(task, resched);
                 task.set_state(TaskState::Ready);
-                ATS_DRIVER.stask(task.as_ref() as *const dyn AbsTaskInner as *const _ as usize, PROCESS_ID, task.get_priority());
+                let priority = task.inner.get_priority();
+                ATS_DRIVER.stask(Arc::into_raw(task) as *const _ as usize, PROCESS_ID, priority);
             } else {
                 break;
             }
@@ -203,7 +204,7 @@ impl WaitQueue {
             task.set_in_wait_queue(false);
             // rq.unblock_task(wq.remove(index).unwrap(), resched);
             task.set_state(TaskState::Ready);
-            ATS_DRIVER.stask(task.as_ref() as *const dyn AbsTaskInner as *const _ as usize, PROCESS_ID, task.get_priority());
+            ATS_DRIVER.stask(Arc::into_raw(task.clone()) as *const _ as usize, PROCESS_ID, task.get_priority());
             true
         } else {
             false
@@ -215,7 +216,8 @@ impl WaitQueue {
             task.set_in_wait_queue(false);
             // rq.unblock_task(task, resched);
             task.set_state(TaskState::Ready);
-            ATS_DRIVER.stask(task.as_ref() as *const dyn AbsTaskInner as *const _ as usize, PROCESS_ID, task.get_priority());
+            let priority = task.inner.get_priority();
+            ATS_DRIVER.stask(Arc::into_raw(task) as *const _ as usize, PROCESS_ID, priority);
             true
         } else {
             false
@@ -227,7 +229,8 @@ impl WaitQueue {
             task.set_in_wait_queue(false);
             // rq.unblock_task(task, resched);
             task.set_state(TaskState::Ready);
-            ATS_DRIVER.stask(task.as_ref() as *const dyn AbsTaskInner as *const _ as usize, PROCESS_ID, task.get_priority());
+            let priority = task.inner.get_priority();
+            ATS_DRIVER.stask(Arc::into_raw(task) as *const _ as usize, PROCESS_ID, priority);
         }
     }
 }

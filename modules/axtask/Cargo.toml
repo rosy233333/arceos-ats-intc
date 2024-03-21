@@ -14,7 +14,7 @@ default = []
 
 multitask = [
     "dep:axconfig", "dep:percpu", "dep:spinlock", "dep:lazy_init", "dep:memory_addr",
-    "dep:scheduler", "dep:timer_list", "kernel_guard", "dep:crate_interface",
+    "dep:scheduler", "dep:timer_list", "kernel_guard", "dep:crate_interface", "dep:ats-intc"
 ]
 irq = []
 tls = ["axhal/tls"]
@@ -39,7 +39,7 @@ scheduler = { path = "../../crates/scheduler", optional = true }
 timer_list = { path = "../../crates/timer_list", optional = true }
 kernel_guard = { path = "../../crates/kernel_guard", optional = true }
 crate_interface = { path = "../../crates/crate_interface", optional = true }
-ats-intc = { path = "../../../ats-intc", default-features = false, features = ["no-simul", "task-as-usize"] }
+ats-intc = { path = "../../../ats-intc", default-features = false, features = ["no-simul", "task-as-usize"], optional = true }
 
 [dev-dependencies]
 rand = "0.8"

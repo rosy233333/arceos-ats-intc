@@ -1,11 +1,12 @@
 //! Task APIs for multi-task configuration.
 
 use alloc::{string::String, sync::Arc};
+use ats_intc::AtsDriver;
 
-use crate::ats::{ATS_DRIVER, ATS_EXECUTOR, CURRENT_TASK};
+use crate::ats::{Ats, ATS_DRIVER, ATS_EXECUTOR, CURRENT_TASK};
 // pub(crate) use crate::run_queue::{AxRunQueue, RUN_QUEUE};
 
-use crate::task::{AbsTaskInner, AsyncTaskInner};
+use crate::task::{AbsTaskInner, AsyncTaskInner, AxTask};
 #[doc(cfg(feature = "multitask"))]
 pub use crate::task::{CurrentTask, TaskId, TaskInner};
 #[doc(cfg(feature = "multitask"))]
@@ -14,24 +15,25 @@ pub use crate::wait_queue::WaitQueue;
 use crate::ats::PROCESS_ID;
 
 /// The reference type of a task.
-pub type AxTaskRef = Arc<dyn AbsTaskInner>;
+pub type AxTaskRef = Arc<AxTask>;
 
+use core::cell::RefCell;
 use core::future::Future;
 
-cfg_if::cfg_if! {
-    if #[cfg(feature = "sched_rr")] {
-        const MAX_TIME_SLICE: usize = 5;
-        pub(crate) type AxTask = scheduler::RRTask<TaskInner, MAX_TIME_SLICE>;
-        pub(crate) type Scheduler = scheduler::RRScheduler<TaskInner, MAX_TIME_SLICE>;
-    } else if #[cfg(feature = "sched_cfs")] {
-        pub(crate) type AxTask = scheduler::CFSTask<TaskInner>;
-        pub(crate) type Scheduler = scheduler::CFScheduler<TaskInner>;
-    } else {
-        // If no scheduler features are set, use FIFO as the default.
-        pub(crate) type AxTask = scheduler::FifoTask<TaskInner>;
-        pub(crate) type Scheduler = scheduler::FifoScheduler<TaskInner>;
-    }
-}
+// cfg_if::cfg_if! {
+//     if #[cfg(feature = "sched_rr")] {
+//         const MAX_TIME_SLICE: usize = 5;
+//         pub(crate) type AxTask = scheduler::RRTask<TaskInner, MAX_TIME_SLICE>;
+//         pub(crate) type Scheduler = scheduler::RRScheduler<TaskInner, MAX_TIME_SLICE>;
+//     } else if #[cfg(feature = "sched_cfs")] {
+//         pub(crate) type AxTask = scheduler::CFSTask<TaskInner>;
+//         pub(crate) type Scheduler = scheduler::CFScheduler<TaskInner>;
+//     } else {
+//         // If no scheduler features are set, use FIFO as the default.
+//         pub(crate) type AxTask = scheduler::FifoTask<TaskInner>;
+//         pub(crate) type Scheduler = scheduler::FifoScheduler<TaskInner>;
+//     }
+// }
 
 // #[cfg(feature = "preempt")]
 // struct KernelGuardIfImpl;
@@ -58,9 +60,21 @@ cfg_if::cfg_if! {
 //     CurrentTask::try_get()
 // }
 
+/// Init the scheduler/executor.
+pub fn init() {
+    ATS_DRIVER.init_by(AtsDriver::new(0xffff_ffc0_0f00_0000));
+    ATS_EXECUTOR.init_by(Ats::new(PROCESS_ID));
+    CURRENT_TASK.init_by(CurrentTask::new());
+}
+
 /// Gets the current task.
-pub fn current() -> CurrentTask {
-    CURRENT_TASK
+pub fn current() -> Option<AxTaskRef> {
+    CURRENT_TASK.clone()
+}
+
+/// Gets the current task id.
+pub fn current_id() -> Option<u64> {
+    current().map(|t|{ t.id().as_u64() })
 }
 
 // /// Initializes the task scheduler (for the primary CPU).
@@ -102,8 +116,20 @@ where
     F: FnOnce() + Send + 'static,
 {
     let task = TaskInner::new(f, name, stack_size);
-    let task_ref = task.as_ref() as *const AbsTaskInner as *const _ as usize;
-    ATS_DRIVER.stask(task_ref, PROCESS_ID, task.get_priority());
+    let priority = task.inner.get_priority();
+    let task_ref = Arc::into_raw(task.clone()) as *const () as usize;
+    ATS_DRIVER.stask(task_ref, PROCESS_ID, priority);
+    task
+}
+
+pub fn spawn_raw_init<F>(f: F, name: String, stack_size: usize) -> AxTaskRef
+where
+    F: FnOnce() + Send + 'static,
+{
+    let task = TaskInner::new_init(f, name, stack_size);
+    let priority = task.inner.get_priority();
+    let task_ref = Arc::into_raw(task.clone()) as *const () as usize;
+    ATS_DRIVER.stask(task_ref, PROCESS_ID, priority);
     task
 }
 
@@ -120,16 +146,24 @@ where
     spawn_raw(f, "".into(), axconfig::TASK_STACK_SIZE)
 }
 
+pub fn spawn_init<F>(f: F) -> AxTaskRef
+where
+    F: FnOnce() + Send + 'static,
+{
+    spawn_raw_init(f, "main".into(), axconfig::TASK_STACK_SIZE)
+}
+
 /// Spawns a new async task with the given parameters.
 ///
 /// Returns the task reference.
 pub fn spawn_raw_async<F>(f: F, name: String) -> AxTaskRef
 where
-    F: Future<Output = i32> + Send + Sync,
+    F: Future<Output = i32> + Send + Sync + 'static,
 {
     let task = AsyncTaskInner::new(f, name);
-    let task_ref = task.as_ref() as *const AbsTaskInner as *const _ as usize;
-    ATS_DRIVER.stask(task_ref, PROCESS_ID, task.get_priority());
+    let priority = task.inner.get_priority();
+    let task_ref = Arc::into_raw(task.clone()) as *const () as usize;
+    ATS_DRIVER.stask(task_ref, PROCESS_ID, priority);
     task
 }
 
@@ -141,7 +175,7 @@ where
 /// Returns the task reference.
 pub fn spawn_async<F>(f: F) -> AxTaskRef
 where
-    F: Future<Output = i32> + Send + Sync,
+    F: Future<Output = i32> + Send + Sync + 'static,
 {
     spawn_raw_async(f, "".into())
 }
@@ -155,50 +189,46 @@ where
 /// Returns `true` if the priority is set successfully.
 ///
 /// [CFS]: https://en.wikipedia.org/wiki/Completely_Fair_Scheduler
-pub fn set_priority(prio: isize) {
-    assert!(prio >= 0);
-    let current = current();
-    current.as_task_ref().unwrap().set_priority(prio as usize);
+pub fn set_priority(prio: isize) -> bool {
+    if prio >= 0 {
+        let current = current();
+        current.unwrap().set_priority(prio as usize);
+        true
+    }
+    else {
+        false
+    }
 }
 
 /// Current task gives up the CPU time voluntarily, and switches to another
 /// ready task.
 pub fn yield_now() {
-    let current_task = current().as_task_ref().unwrap();
-    assert!(!current_task.is_async());
-    unsafe {
-        let sync_task = &*(current_task.as_ref() as *const AbsTaskInner as *const _ as *const TaskInner);
-        sync_task.yield_self();
-    }
+    let current_task = current().unwrap();
+    current_task.sync_yield();
 }
 
-// TODO
-// /// Current task is going to sleep for the given duration.
-// ///
-// /// If the feature `irq` is not enabled, it uses busy-wait instead.
-// pub fn sleep(dur: core::time::Duration) {
-//     sleep_until(axhal::time::current_time() + dur);
-// }
+/// Current task is going to sleep for the given duration.
+///
+/// If the feature `irq` is not enabled, it uses busy-wait instead.
+pub fn sleep(dur: core::time::Duration) {
+    sleep_until(axhal::time::current_time() + dur);
+}
 
-// TODO
-// /// Current task is going to sleep, it will be woken up at the given deadline.
-// ///
-// /// If the feature `irq` is not enabled, it uses busy-wait instead.
-// pub fn sleep_until(deadline: axhal::time::TimeValue) {
-//     #[cfg(feature = "irq")]
-//     RUN_QUEUE.lock().sleep_until(deadline);
-//     #[cfg(not(feature = "irq"))]
-//     axhal::time::busy_wait_until(deadline);
-// }
+/// Current task is going to sleep, it will be woken up at the given deadline.
+///
+/// If the feature `irq` is not enabled, it uses busy-wait instead.
+pub fn sleep_until(deadline: axhal::time::TimeValue) {
+    // TODO
+    // #[cfg(feature = "irq")]
+    // RUN_QUEUE.lock().sleep_until(deadline);
+    #[cfg(not(feature = "irq"))]
+    axhal::time::busy_wait_until(deadline);
+}
 
 /// Exits the current task.
 pub fn exit(exit_code: i32) -> ! {
-    let current_task = current().as_task_ref().unwrap();
-    assert!(!current_task.is_async());
-    unsafe {
-        let sync_task = &*(current_task.as_ref() as *const AbsTaskInner as *const _ as *const TaskInner);
-        sync_task.exit(exit_code);
-    }
+    let current_task = current().unwrap();
+    current_task.sync_exit(exit_code);
 }
 
 // /// The idle task routine.

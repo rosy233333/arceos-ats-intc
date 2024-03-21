@@ -1,3 +1,5 @@
+use core::future::Future;
+
 pub fn ax_sleep_until(deadline: crate::time::AxTimeValue) {
     #[cfg(feature = "multitask")]
     axtask::sleep_until(deadline);
@@ -53,7 +55,7 @@ cfg_task! {
     }
 
     pub fn ax_current_task_id() -> u64 {
-        axtask::current().id().as_u64()
+        axtask::current_id().unwrap()
     }
 
     pub fn ax_spawn<F>(f: F, name: alloc::string::String, stack_size: usize) -> AxTaskHandle
@@ -67,8 +69,21 @@ cfg_task! {
         }
     }
 
+    pub fn ax_spawn_async<F>(f: F, name: alloc::string::String) -> AxTaskHandle
+    where
+        F: Future<Output = i32> + Send + Sync + 'static,
+    {
+        let inner = axtask::spawn_raw_async(f, name);
+        AxTaskHandle {
+            id: inner.id().as_u64(),
+            inner,
+        }
+    }
+
     pub fn ax_wait_for_exit(task: AxTaskHandle) -> Option<i32> {
-        task.inner.join()
+        // TODO
+        // task.inner.join()
+        Some(0)
     }
 
     pub fn ax_set_current_priority(prio: isize) -> crate::AxResult {

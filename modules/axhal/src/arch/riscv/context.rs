@@ -1,5 +1,6 @@
 use core::arch::asm;
 use memory_addr::VirtAddr;
+use core::task::Poll;
 
 include_asm_marcos!();
 
@@ -119,6 +120,42 @@ impl TaskContext {
         }
     }
 
+    pub fn switch_to_return_pending(&mut self, next_ctx: &Self) {
+        #[cfg(feature = "tls")]
+        {
+            self.tp = super::read_thread_pointer();
+            unsafe { super::write_thread_pointer(next_ctx.tp) };
+        }
+        unsafe {
+            // TODO: switch FP states
+            context_switch_return_pending(self, next_ctx)
+        }
+    }
+
+    pub fn switch_to_return_ready(&mut self, next_ctx: &Self, exit_value: i32) {
+        #[cfg(feature = "tls")]
+        {
+            self.tp = super::read_thread_pointer();
+            unsafe { super::write_thread_pointer(next_ctx.tp) };
+        }
+        unsafe {
+            // TODO: switch FP states
+            context_switch_return_ready(self, next_ctx, exit_value)
+        }
+    }
+
+    pub fn switch_to_receive_exit_value(&mut self, next_ctx: &Self) -> Poll<i32> {
+        #[cfg(feature = "tls")]
+        {
+            self.tp = super::read_thread_pointer();
+            unsafe { super::write_thread_pointer(next_ctx.tp) };
+        }
+        unsafe {
+            // TODO: switch FP states
+            context_switch_receive_exit_value(self, next_ctx)
+        }
+    }
+
     #[inline(always)]
     pub unsafe fn context_store(&mut self) {
         asm! {
@@ -201,6 +238,136 @@ unsafe extern "C" fn context_switch(_current_task: &mut TaskContext, _next_task:
         LDR     s0, a1, 2
         LDR     sp, a1, 1
         LDR     ra, a1, 0
+
+        ret",
+        options(noreturn),
+    )
+}
+
+#[naked]
+unsafe extern "C" fn context_switch_receive_exit_value(_current_task: &mut TaskContext, _next_task: &TaskContext) -> Poll<i32> {
+    asm!(
+        "
+        // save old context (callee-saved registers)
+        STR     ra, a0, 0
+        STR     sp, a0, 1
+        STR     s0, a0, 2
+        STR     s1, a0, 3
+        STR     s2, a0, 4
+        STR     s3, a0, 5
+        STR     s4, a0, 6
+        STR     s5, a0, 7
+        STR     s6, a0, 8
+        STR     s7, a0, 9
+        STR     s8, a0, 10
+        STR     s9, a0, 11
+        STR     s10, a0, 12
+        STR     s11, a0, 13
+
+        // restore new context
+        LDR     s11, a1, 13
+        LDR     s10, a1, 12
+        LDR     s9, a1, 11
+        LDR     s8, a1, 10
+        LDR     s7, a1, 9
+        LDR     s6, a1, 8
+        LDR     s5, a1, 7
+        LDR     s4, a1, 6
+        LDR     s3, a1, 5
+        LDR     s2, a1, 4
+        LDR     s1, a1, 3
+        LDR     s0, a1, 2
+        LDR     sp, a1, 1
+        LDR     ra, a1, 0
+
+        ret",
+        options(noreturn),
+    )
+}
+
+#[naked]
+unsafe extern "C" fn context_switch_return_pending(_current_task: &mut TaskContext, _next_task: &TaskContext) {
+    asm!(
+        "
+        // save old context (callee-saved registers)
+        STR     ra, a0, 0
+        STR     sp, a0, 1
+        STR     s0, a0, 2
+        STR     s1, a0, 3
+        STR     s2, a0, 4
+        STR     s3, a0, 5
+        STR     s4, a0, 6
+        STR     s5, a0, 7
+        STR     s6, a0, 8
+        STR     s7, a0, 9
+        STR     s8, a0, 10
+        STR     s9, a0, 11
+        STR     s10, a0, 12
+        STR     s11, a0, 13
+
+        // restore new context
+        LDR     s11, a1, 13
+        LDR     s10, a1, 12
+        LDR     s9, a1, 11
+        LDR     s8, a1, 10
+        LDR     s7, a1, 9
+        LDR     s6, a1, 8
+        LDR     s5, a1, 7
+        LDR     s4, a1, 6
+        LDR     s3, a1, 5
+        LDR     s2, a1, 4
+        LDR     s1, a1, 3
+        LDR     s0, a1, 2
+        LDR     sp, a1, 1
+        LDR     ra, a1, 0
+
+        // prepare return value
+        LI      a0, 1
+
+        ret",
+        options(noreturn),
+    )
+}
+
+#[naked]
+unsafe extern "C" fn context_switch_return_ready(_current_task: &mut TaskContext, _next_task: &TaskContext, _exit_value: i32) {
+    asm!(
+        "
+        // save old context (callee-saved registers)
+        STR     ra, a0, 0
+        STR     sp, a0, 1
+        STR     s0, a0, 2
+        STR     s1, a0, 3
+        STR     s2, a0, 4
+        STR     s3, a0, 5
+        STR     s4, a0, 6
+        STR     s5, a0, 7
+        STR     s6, a0, 8
+        STR     s7, a0, 9
+        STR     s8, a0, 10
+        STR     s9, a0, 11
+        STR     s10, a0, 12
+        STR     s11, a0, 13
+
+        // restore new context
+        LDR     s11, a1, 13
+        LDR     s10, a1, 12
+        LDR     s9, a1, 11
+        LDR     s8, a1, 10
+        LDR     s7, a1, 9
+        LDR     s6, a1, 8
+        LDR     s5, a1, 7
+        LDR     s4, a1, 6
+        LDR     s3, a1, 5
+        LDR     s2, a1, 4
+        LDR     s1, a1, 3
+        LDR     s0, a1, 2
+        LDR     sp, a1, 1
+        LDR     ra, a1, 0
+
+        // prepare return value
+        LI      a0, 0
+        MV      a1, a2
 
         ret",
         options(noreturn),
