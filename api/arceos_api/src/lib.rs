@@ -81,6 +81,8 @@ pub mod stdio {
 
 /// Multi-threading management.
 pub mod task {
+    use core::future::Future;
+
     define_api_type! {
         @cfg "multitask";
         pub type AxTaskHandle;
@@ -113,6 +115,11 @@ pub mod task {
             f: impl FnOnce() + Send + 'static,
             name: alloc::string::String,
             stack_size: usize
+        ) -> AxTaskHandle;
+        /// Spawns a new async task with the given future and other arguments.
+        pub fn ax_spawn_async(
+            f: impl Future<Output = i32> + Send + Sync + 'static,
+            name: alloc::string::String
         ) -> AxTaskHandle;
         /// Waits for the given task to exit, and returns its exit code (the
         /// argument of [`ax_exit`]).

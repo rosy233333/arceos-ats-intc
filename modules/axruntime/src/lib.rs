@@ -74,7 +74,7 @@ impl axlog::LogIf for LogIfImpl {
         if is_init_ok() {
             #[cfg(feature = "multitask")]
             {
-                axtask::current_may_uninit().map(|curr| curr.id().as_u64())
+                axtask::current_id()
             }
             #[cfg(not(feature = "multitask"))]
             None
@@ -150,7 +150,7 @@ pub extern "C" fn rust_main(cpu_id: usize, dtb: usize) -> ! {
     axhal::platform_init();
 
     #[cfg(feature = "multitask")]
-    axtask::init_scheduler();
+    axtask::init();
 
     #[cfg(any(feature = "fs", feature = "net", feature = "display"))]
     {
@@ -189,12 +189,22 @@ pub extern "C" fn rust_main(cpu_id: usize, dtb: usize) -> ! {
         core::hint::spin_loop();
     }
 
-    unsafe { main() };
-
     #[cfg(feature = "multitask")]
-    axtask::exit(0);
+    {
+        info!("multitask start spawn main");
+        axtask::spawn_init(|| { 
+            unsafe{ 
+                main();
+                axtask::exit(0);
+            } 
+        });
+        info!("multitask start run executor");
+        axtask::run_executor();
+    }
+    
     #[cfg(not(feature = "multitask"))]
     {
+        unsafe { main() };
         debug!("main task exited: exit_code={}", 0);
         axhal::misc::terminate();
     }

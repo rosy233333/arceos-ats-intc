@@ -1,10 +1,11 @@
-//! Thread APIs for multi-threading configuration.
+ //! Thread APIs for multi-threading configuration.
 
 extern crate alloc;
 
 use crate::io;
 use alloc::{string::String, sync::Arc};
 use core::{cell::UnsafeCell, num::NonZeroU64};
+use core::future::Future;
 
 use arceos_api::task::{self as api, AxTaskHandle};
 use axerrno::ax_err_type;
@@ -124,6 +125,76 @@ impl Builder {
     }
 }
 
+/// Thread factory, which can be used in order to configure the properties of
+/// a new thread.
+///
+/// Methods can be chained on it in order to configure it.
+#[derive(Debug)]
+pub struct AsyncBuilder {
+    // A name for the thread-to-be, for identification in panic messages
+    name: Option<String>,
+}
+
+impl AsyncBuilder {
+    /// Generates the base configuration for spawning a thread, from which
+    /// configuration methods can be chained.
+    pub const fn new() -> AsyncBuilder {
+        AsyncBuilder {
+            name: None,
+        }
+    }
+
+    /// Names the thread-to-be.
+    pub fn name(mut self, name: String) -> AsyncBuilder {
+        self.name = Some(name);
+        self
+    }
+
+    /// Spawns a new thread by taking ownership of the `Builder`, and returns an
+    /// [`io::Result`] to its [`JoinHandle`].
+    ///
+    /// The spawned thread may outlive the caller (unless the caller thread
+    /// is the main thread; the whole process is terminated when the main
+    /// thread finishes). The join handle can be used to block on
+    /// termination of the spawned thread.
+    pub fn spawn<F>(self, f: F) -> io::Result<()>
+    where
+        F: Future<Output = i32> + Send + Sync + 'static,
+    {
+        unsafe { self.spawn_unchecked(f) }
+    }
+
+    unsafe fn spawn_unchecked<F>(self, f: F) -> io::Result<()>
+    where
+        F: Future<Output = i32> + Send + Sync + 'static,
+    {
+        let name = self.name.unwrap_or_default();
+
+        // let my_packet = Arc::new(Packet {
+        //     result: UnsafeCell::new(None),
+        // });
+        // let their_packet = my_packet.clone();
+
+        // let main = move || {
+        //     let ret = f();
+        //     // SAFETY: `their_packet` as been built just above and moved by the
+        //     // closure (it is an Arc<...>) and `my_packet` will be stored in the
+        //     // same `JoinHandle` as this closure meaning the mutation will be
+        //     // safe (not modify it and affect a value far away).
+        //     unsafe { *their_packet.result.get() = Some(ret) };
+        //     drop(their_packet);
+        // };
+
+        let task = api::ax_spawn_async(f, name);
+        // Ok(JoinHandle {
+        //     thread: Thread::from_id(task.id()),
+        //     native: task,
+        //     packet: my_packet,
+        // })
+        Ok(())
+    }
+}
+
 /// Gets a handle to the thread that invokes it.
 pub fn current() -> Thread {
     let id = api::ax_current_task_id();
@@ -145,6 +216,13 @@ where
     T: Send + 'static,
 {
     Builder::new().spawn(f).expect("failed to spawn thread")
+}
+
+pub fn spawn_async<F>(f: F)
+where
+    F: Future<Output = i32> + Send + Sync + 'static,
+{
+    AsyncBuilder::new().spawn(f).expect("failed to spawn thread");
 }
 
 struct Packet<T> {
