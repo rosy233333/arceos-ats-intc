@@ -1,5 +1,5 @@
 ﻿use core::{cell::{RefCell, UnsafeCell}, hint::spin_loop, task::Poll};
-use ats_intc::AtsDriver;
+use ats_intc::AtsIntc;
 use axhal::arch::TaskContext;
 use lazy_init::LazyInit;
 use spinlock::SpinNoIrq;
@@ -10,7 +10,7 @@ use core::arch::asm;
 use memory_addr::align_up_4k;
 
 // pub(crate) static ATS_DRIVER: Lazy<AtsDriver> = Lazy::new(| |{ AtsDriver::new(0xffff_ffc0_0f00_0000) });
-pub(crate) static ATS_DRIVER: LazyInit<AtsDriver> = LazyInit::new();
+pub(crate) static ATS_DRIVER: LazyInit<AtsIntc> = LazyInit::new();
 pub(crate) const PROCESS_ID: usize = 0;
 
 // scheduler and executor
@@ -45,7 +45,7 @@ impl Ats {
     pub(crate) fn run(&self) -> ! {
         loop {
             info!("  into Ats::run");
-            let task = ATS_DRIVER.ftask(self.process_id);
+            let task = ATS_DRIVER.ps_fetch();
             info!("  after ftask");
             match task {
                 Some(task_ref) => {

@@ -10,7 +10,7 @@ use core::task::{Context, Poll};
 use core::{alloc::Layout, cell::UnsafeCell, fmt, ptr::NonNull};
 
 use core::arch::asm;
-use ats_intc::AtsDriver;
+use ats_intc::AtsIntc;
 
 #[cfg(feature = "preempt")]
 use core::sync::atomic::AtomicUsize;
@@ -39,7 +39,7 @@ impl Wake for AxTask {
         self.inner.set_state(TaskState::Ready);
         let priority = self.inner.get_priority();
         let task_ref = Arc::into_raw(self) as *const _ as usize;
-        ATS_DRIVER.stask(task_ref, PROCESS_ID, priority);
+        ATS_DRIVER.ps_push(task_ref, priority);
     }
 }
 
@@ -127,7 +127,7 @@ impl AxTask {
         self.set_state(TaskState::Ready);
 
         let priority = self.get_priority();
-        ATS_DRIVER.stask(Arc::into_raw(self.clone()) as *const () as usize, PROCESS_ID, priority);
+        ATS_DRIVER.ps_push(Arc::into_raw(self.clone()) as *const () as usize, priority);
 
         unsafe {
             

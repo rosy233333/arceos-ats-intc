@@ -1,7 +1,7 @@
 //! Task APIs for multi-task configuration.
 
 use alloc::{string::String, sync::Arc};
-use ats_intc::AtsDriver;
+use ats_intc::AtsIntc;
 
 use crate::ats::{Ats, ATS_DRIVER, ATS_EXECUTOR, CURRENT_TASK};
 // pub(crate) use crate::run_queue::{AxRunQueue, RUN_QUEUE};
@@ -62,7 +62,7 @@ use core::future::Future;
 
 /// Init the scheduler/executor.
 pub fn init() {
-    ATS_DRIVER.init_by(AtsDriver::new(0xffff_ffc0_0f00_0000));
+    ATS_DRIVER.init_by(AtsIntc::new(0xffff_ffc0_0f00_0000));
     ATS_EXECUTOR.init_by(Ats::new(PROCESS_ID));
     CURRENT_TASK.init_by(CurrentTask::new());
 }
@@ -118,7 +118,7 @@ where
     let task = TaskInner::new(f, name, stack_size);
     let priority = task.inner.get_priority();
     let task_ref = Arc::into_raw(task.clone()) as *const () as usize;
-    ATS_DRIVER.stask(task_ref, PROCESS_ID, priority);
+    ATS_DRIVER.ps_push(task_ref, priority);
     task
 }
 
@@ -129,7 +129,7 @@ where
     let task = TaskInner::new_init(f, name, stack_size);
     let priority = task.inner.get_priority();
     let task_ref = Arc::into_raw(task.clone()) as *const () as usize;
-    ATS_DRIVER.stask(task_ref, PROCESS_ID, priority);
+    ATS_DRIVER.ps_push(task_ref, priority);
     task
 }
 
@@ -163,7 +163,7 @@ where
     let task = AsyncTaskInner::new(f, name);
     let priority = task.inner.get_priority();
     let task_ref = Arc::into_raw(task.clone()) as *const () as usize;
-    ATS_DRIVER.stask(task_ref, PROCESS_ID, priority);
+    ATS_DRIVER.ps_push(task_ref, priority);
     task
 }
 
