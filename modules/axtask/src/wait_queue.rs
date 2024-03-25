@@ -58,7 +58,7 @@ impl WaitQueue {
         #[cfg(feature = "irq")]
         if task.in_timer_list() {
             // timeout was set but not triggered (wake up by `WaitQueue::notify()`)
-            crate::timers::cancel_alarm(task.as_task_ref());
+            crate::timers::cancel_alarm(&task);
         }
     }
 
@@ -72,6 +72,7 @@ impl WaitQueue {
         let task = crate::current().unwrap();
         task.set_in_wait_queue(true);
         self.queue.lock().push_back(task.clone());
+        task.clone().sync_block();
         self.cancel_events(task);
     }
 
@@ -99,6 +100,7 @@ impl WaitQueue {
             }
             task.set_in_wait_queue(true);
             self.queue.lock().push_back(task.clone());
+            task.clone().sync_block();
         }
         self.cancel_events(task);
     }
@@ -107,7 +109,7 @@ impl WaitQueue {
     /// notify it, or the given duration has elapsed.
     #[cfg(feature = "irq")]
     pub fn wait_timeout(&self, dur: core::time::Duration) -> bool {
-        let curr = crate::current();
+        let curr = crate::current().unwrap();
         let deadline = axhal::time::current_time() + dur;
         debug!(
             "task wait_timeout: {} deadline={:?}",
@@ -116,10 +118,14 @@ impl WaitQueue {
         );
         crate::timers::set_alarm_wakeup(deadline, curr.clone());
 
-        RUN_QUEUE.lock().block_current(|task| {
-            task.set_in_wait_queue(true);
-            self.queue.lock().push_back(task)
-        });
+        // RUN_QUEUE.lock().block_current(|task| {
+        //     task.set_in_wait_queue(true);
+        //     self.queue.lock().push_back(task)
+        // });
+        curr.set_in_wait_queue(true);
+        self.queue.lock().push_back(curr.clone());
+        curr.clone().sync_block();
+
         let timeout = curr.in_wait_queue(); // still in the wait queue, must have timed out
         self.cancel_events(curr);
         timeout
@@ -135,7 +141,7 @@ impl WaitQueue {
     where
         F: Fn() -> bool,
     {
-        let curr = crate::current();
+        let curr = crate::current().unwrap();
         let deadline = axhal::time::current_time() + dur;
         debug!(
             "task wait_timeout: {}, deadline={:?}",
@@ -146,15 +152,19 @@ impl WaitQueue {
 
         let mut timeout = true;
         while axhal::time::current_time() < deadline {
-            let mut rq = RUN_QUEUE.lock();
+            // let mut rq = RUN_QUEUE.lock();
             if condition() {
                 timeout = false;
                 break;
             }
-            rq.block_current(|task| {
-                task.set_in_wait_queue(true);
-                self.queue.lock().push_back(task);
-            });
+            // rq.block_current(|task| {
+            //     task.set_in_wait_queue(true);
+            //     self.queue.lock().push_back(task);
+            // });
+
+            curr.set_in_wait_queue(true);
+            self.queue.lock().push_back(curr.clone());
+            curr.clone().sync_block();
         }
         self.cancel_events(curr);
         timeout

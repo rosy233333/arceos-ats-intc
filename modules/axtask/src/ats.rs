@@ -66,9 +66,9 @@ impl Ats {
                     }
                 },
                 None => {
-                    info!("  ftask: None");
+                    // info!("  ftask: None");
                     // spin_loop();
-                    axhal::misc::terminate();
+                    // axhal::misc::terminate();
                 }
             }
         }

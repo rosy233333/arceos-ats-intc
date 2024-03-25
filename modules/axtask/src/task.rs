@@ -116,6 +116,16 @@ impl AxTask {
         self.inner.set_in_wait_queue(in_wait_queue)
     }
 
+    #[cfg(feature = "irq")]
+    pub(crate) fn in_timer_list(&self) -> bool {
+        self.inner.in_timer_list()
+    }
+
+    #[cfg(feature = "irq")]
+    pub(crate) fn set_in_timer_list(&self, in_timer_list: bool) {
+        self.inner.set_in_timer_list(in_timer_list)
+    }
+
     pub(crate) fn is_async(&self) -> bool {
         self.inner.is_async()
     }
@@ -161,6 +171,39 @@ impl AxTask {
             let new_ctx = inner.ret_ctx_mut_ptr().as_ref().unwrap();
             old_ctx.switch_to_return_pending(new_ctx);
         }
+    }
+
+    /// This function should be called after this task is added into a block queue. Otherwise, task won't wake.
+    pub(crate) fn sync_block(self: Arc<Self>) {
+        assert!(!self.is_async());
+        assert!(self.is_running());
+
+        self.set_state(TaskState::Blocked);
+
+        unsafe {
+            let inner = &*(self.inner.as_ref() as *const dyn AbsTaskInner as *const () as *const TaskInner);
+            let old_ctx = inner.ctx_mut_ptr().as_mut().unwrap();
+            let new_ctx = inner.ret_ctx_mut_ptr().as_ref().unwrap();
+            old_ctx.switch_to_return_pending(new_ctx);
+        }
+    }
+
+    pub fn sync_sleep_until(self: Arc<Self>, deadline: axhal::time::TimeValue) {
+        assert!(self.is_running());
+        assert!(!self.is_async());
+
+        let now = axhal::time::current_time();
+        if now < deadline {
+            crate::timers::set_alarm_wakeup(deadline, self.clone());
+            self.set_state(TaskState::Blocked);
+            unsafe {
+                let inner = &*(self.inner.as_ref() as *const dyn AbsTaskInner as *const () as *const TaskInner);
+                let old_ctx = inner.ctx_mut_ptr().as_mut().unwrap();
+                let new_ctx = inner.ret_ctx_mut_ptr().as_ref().unwrap();
+                old_ctx.switch_to_return_pending(new_ctx);
+            }
+        }
+        
     }
 
     pub fn sync_exit(self: Arc<Self>, exit_code: i32) -> ! {

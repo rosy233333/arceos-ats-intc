@@ -195,7 +195,7 @@ pub extern "C" fn rust_main(cpu_id: usize, dtb: usize) -> ! {
         axtask::spawn_init(|| { 
             unsafe{ 
                 main();
-                axtask::exit(0);
+                // axhal::misc::terminate();
             } 
         });
         info!("multitask start run executor");

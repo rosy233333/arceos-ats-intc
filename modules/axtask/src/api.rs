@@ -65,6 +65,8 @@ pub fn init() {
     ATS_DRIVER.init_by(AtsIntc::new(0xffff_ffc0_0f00_0000));
     ATS_EXECUTOR.init_by(Ats::new(PROCESS_ID));
     CURRENT_TASK.init_by(CurrentTask::new());
+    #[cfg(feature = "irq")]
+    crate::timers::init();
 }
 
 /// Gets the current task.
@@ -105,7 +107,7 @@ pub fn run_executor() -> ! {
 #[doc(cfg(feature = "irq"))]
 pub fn on_timer_tick() {
     crate::timers::check_events();
-    RUN_QUEUE.lock().scheduler_timer_tick();
+    // RUN_QUEUE.lock().scheduler_timer_tick();
 }
 
 /// Spawns a new task with the given parameters.
@@ -219,8 +221,11 @@ pub fn sleep(dur: core::time::Duration) {
 /// If the feature `irq` is not enabled, it uses busy-wait instead.
 pub fn sleep_until(deadline: axhal::time::TimeValue) {
     // TODO
-    // #[cfg(feature = "irq")]
-    // RUN_QUEUE.lock().sleep_until(deadline);
+    #[cfg(feature = "irq")] {
+        // RUN_QUEUE.lock().sleep_until(deadline);
+        let current_task = current().unwrap();
+        current_task.sync_sleep_until(deadline);
+    }
     #[cfg(not(feature = "irq"))]
     axhal::time::busy_wait_until(deadline);
 }
