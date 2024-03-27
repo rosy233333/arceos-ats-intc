@@ -985,7 +985,7 @@ impl CurrentTask {
     //     self.0.map(|a| { ManuallyDrop::into_inner(a) })
     // }
 
-    pub(crate) fn clone(&self) -> Option<AxTaskRef> {
+    pub(crate) fn get_clone(&self) -> Option<AxTaskRef> {
         self.0.borrow().as_deref().map(|a| { a.clone() })
     }
 
@@ -1022,6 +1022,14 @@ impl CurrentTask {
 
 unsafe impl Send for CurrentTask { }
 unsafe impl Sync for CurrentTask { }
+
+/// Only used for initialization
+impl Clone for CurrentTask {
+    fn clone(&self) -> Self {
+        assert!(self.0.borrow().is_none());
+        Self::new()
+    }
+}
 
 extern "C" fn task_entry() -> ! {
     // // release the lock that was implicitly held across the reschedule

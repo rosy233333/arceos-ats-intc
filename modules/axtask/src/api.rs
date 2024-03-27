@@ -2,8 +2,12 @@
 
 use alloc::{string::String, sync::Arc};
 use ats_intc::AtsIntc;
+use axconfig::SMP;
+use axhal::cpu::this_cpu_id;
+use alloc::vec;
+use alloc::vec::Vec;
 
-use crate::ats::{Ats, ATS_DRIVER, ATS_EXECUTOR, CURRENT_TASK};
+use crate::ats::{Ats, ATS_DRIVER, ATS_EXECUTORS, CURRENT_TASKS};
 // pub(crate) use crate::run_queue::{AxRunQueue, RUN_QUEUE};
 
 use crate::task::{AbsTaskInner, AsyncTaskInner, AxTask};
@@ -63,15 +67,22 @@ use core::future::Future;
 /// Init the scheduler/executor.
 pub fn init() {
     ATS_DRIVER.init_by(AtsIntc::new(0xffff_ffc0_0f00_0000));
-    ATS_EXECUTOR.init_by(Ats::new(PROCESS_ID));
-    CURRENT_TASK.init_by(CurrentTask::new());
+    ATS_EXECUTORS.init_by(vec![Ats::new(PROCESS_ID); SMP]);
+    CURRENT_TASKS.init_by(vec![CurrentTask::new(); SMP]);
+    // ATS_EXECUTORS.init_by(Vec::new());
+    // CURRENT_TASKS.init_by(Vec::new());
+    // for i in 0 .. SMP {
+    //     ATS_EXECUTORS.push(Ats::new(PROCESS_ID));
+    //     CURRENT_TASKS.push(CurrentTask::new());
+    // }
     #[cfg(feature = "irq")]
     crate::timers::init();
 }
 
 /// Gets the current task.
 pub fn current() -> Option<AxTaskRef> {
-    CURRENT_TASK.clone()
+    let cpu_id = this_cpu_id();
+    CURRENT_TASKS[cpu_id].get_clone()
 }
 
 /// Gets the current task id.
@@ -96,8 +107,8 @@ pub fn current_id() -> Option<u64> {
 // }
 
 /// Run the task executor
-pub fn run_executor() -> ! {
-    ATS_EXECUTOR.run()
+pub fn run_executor(cpu_id: usize) -> ! {
+    ATS_EXECUTORS[cpu_id].run()
 }
 
 /// Handles periodic timer ticks for the task manager.

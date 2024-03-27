@@ -199,7 +199,7 @@ pub extern "C" fn rust_main(cpu_id: usize, dtb: usize) -> ! {
             } 
         });
         info!("multitask start run executor");
-        axtask::run_executor();
+        axtask::run_executor(cpu_id);
     }
     
     #[cfg(not(feature = "multitask"))]
