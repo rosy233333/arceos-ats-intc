@@ -195,7 +195,8 @@ impl WaitQueue {
                 // rq.unblock_task(task, resched);
                 task.set_state(TaskState::Ready);
                 let priority = task.inner.get_priority();
-                ATS_DRIVER.ps_push(Arc::into_raw(task) as *const _ as usize, priority);
+                let task_ref = task.into_task_ref();
+                ATS_DRIVER.ps_push(task_ref, priority);
             } else {
                 break;
             }
@@ -214,7 +215,8 @@ impl WaitQueue {
             task.set_in_wait_queue(false);
             // rq.unblock_task(wq.remove(index).unwrap(), resched);
             task.set_state(TaskState::Ready);
-            ATS_DRIVER.ps_push(Arc::into_raw(task.clone()) as *const _ as usize, task.get_priority());
+            let task_ref = task.clone().into_task_ref();
+            ATS_DRIVER.ps_push(task_ref, task.get_priority());
             true
         } else {
             false
@@ -227,7 +229,8 @@ impl WaitQueue {
             // rq.unblock_task(task, resched);
             task.set_state(TaskState::Ready);
             let priority = task.inner.get_priority();
-            ATS_DRIVER.ps_push(Arc::into_raw(task) as *const _ as usize, priority);
+            let task_ref = task.into_task_ref();
+            ATS_DRIVER.ps_push(task_ref, priority);
             true
         } else {
             false
@@ -240,7 +243,8 @@ impl WaitQueue {
             // rq.unblock_task(task, resched);
             task.set_state(TaskState::Ready);
             let priority = task.inner.get_priority();
-            ATS_DRIVER.ps_push(Arc::into_raw(task) as *const _ as usize, priority);
+            let task_ref = task.into_task_ref();
+            ATS_DRIVER.ps_push(task_ref, priority);
         }
     }
 }

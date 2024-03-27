@@ -130,7 +130,7 @@ where
 {
     let task = TaskInner::new(f, name, stack_size);
     let priority = task.inner.get_priority();
-    let task_ref = Arc::into_raw(task.clone()) as *const () as usize;
+    let task_ref = task.clone().into_task_ref();
     ATS_DRIVER.ps_push(task_ref, priority);
     task
 }
@@ -141,7 +141,7 @@ where
 {
     let task = TaskInner::new_init(f, name, stack_size);
     let priority = task.inner.get_priority();
-    let task_ref = Arc::into_raw(task.clone()) as *const () as usize;
+    let task_ref = task.clone().into_task_ref();
     ATS_DRIVER.ps_push(task_ref, priority);
     task
 }
@@ -175,7 +175,7 @@ where
 {
     let task = AsyncTaskInner::new(f, name);
     let priority = task.inner.get_priority();
-    let task_ref = Arc::into_raw(task.clone()) as *const () as usize;
+    let task_ref = task.clone().into_task_ref();
     ATS_DRIVER.ps_push(task_ref, priority);
     task
 }

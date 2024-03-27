@@ -10,13 +10,10 @@ use core::arch::asm;
 use memory_addr::align_up_4k;
 use alloc::vec::Vec;
 
-// pub(crate) static ATS_DRIVER: Lazy<AtsDriver> = Lazy::new(| |{ AtsDriver::new(0xffff_ffc0_0f00_0000) });
 pub(crate) static ATS_DRIVER: LazyInit<AtsIntc> = LazyInit::new();
 pub(crate) const PROCESS_ID: usize = 0;
 
 // scheduler and executor
-// pub(crate) static ATS_EXECUTOR: Lazy<Ats> = Lazy::new(| |{ Ats::new(PROCESS_ID) });
-// pub(crate) static CURRENT_TASK: Lazy<RefCell<CurrentTask>> = Lazy::new(| |{ RefCell::new(CurrentTask::new()) });
 pub(crate) static ATS_EXECUTORS: LazyInit<Vec<Ats>> = LazyInit::new();
 pub(crate) static CURRENT_TASKS: LazyInit<Vec<CurrentTask>> = LazyInit::new();
 
@@ -47,13 +44,13 @@ impl Ats {
         let cpu_id = this_cpu_id();
         loop {
             // info!("  into Ats::run");
-            let task = ATS_DRIVER.ps_fetch();
+            let ats_task = ATS_DRIVER.ps_fetch();
             // info!("  after ftask");
-            match task {
+            match ats_task {
                 Some(task_ref) => {
                     unsafe {
                         info!("  ftask: Some");
-                        let task: Arc<AxTask> = Arc::from_raw(task_ref as *const AxTask);
+                        let task: Arc<AxTask> = unsafe { AxTask::from_task_ref(task_ref) };
                         info!("  fetch task: {}.", task.id_name());
                         CURRENT_TASKS[cpu_id].set_current(Some(task.clone()));
                         match task.poll(&mut Context::from_waker(&Waker::from(task.clone()))) { 

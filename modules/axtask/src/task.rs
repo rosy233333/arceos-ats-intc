@@ -10,7 +10,7 @@ use core::task::{Context, Poll};
 use core::{alloc::Layout, cell::UnsafeCell, fmt, ptr::NonNull};
 
 use core::arch::asm;
-use ats_intc::AtsIntc;
+use ats_intc::{AtsIntc, TaskRef};
 
 #[cfg(feature = "preempt")]
 use core::sync::atomic::AtomicUsize;
@@ -38,7 +38,7 @@ impl Wake for AxTask {
     fn wake(self: Arc<Self>) {
         self.inner.set_state(TaskState::Ready);
         let priority = self.inner.get_priority();
-        let task_ref = Arc::into_raw(self) as *const _ as usize;
+        let task_ref = self.into_task_ref();
         ATS_DRIVER.ps_push(task_ref, priority);
     }
 }
@@ -137,7 +137,8 @@ impl AxTask {
         self.set_state(TaskState::Ready);
 
         let priority = self.get_priority();
-        ATS_DRIVER.ps_push(Arc::into_raw(self.clone()) as *const () as usize, priority);
+        let task_ref = self.clone().into_task_ref();
+        ATS_DRIVER.ps_push(task_ref, priority);
 
         unsafe {
             
@@ -255,6 +256,15 @@ impl AxTask {
 
             unreachable!();
         // }
+    }
+
+    /// SAFETY: `task_ref` must be generated from `Self::into_task_ref`
+    pub(crate) unsafe fn from_task_ref(task_ref: TaskRef) -> Arc<Self> {
+        Arc::from_raw(task_ref.as_ptr() as *const () as *const Self)
+    } 
+
+    pub(crate) fn into_task_ref(self: Arc<Self>) -> TaskRef {
+        unsafe { TaskRef::virt_task(Arc::into_raw(self) as usize) }
     }
 }
 

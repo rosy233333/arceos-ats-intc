@@ -16,7 +16,8 @@ impl TimerEvent for TaskWakeupEvent {
         // let mut rq = RUN_QUEUE.lock();
         self.0.set_in_timer_list(false);
         let priority = self.0.get_priority();
-        ATS_DRIVER.ps_push(Arc::into_raw(self.0) as *const AxTask as usize, priority);
+        let task_ref = self.0.into_task_ref();
+        ATS_DRIVER.ps_push(task_ref, priority);
         // rq.unblock_task(self.0, true);
     }
 }
