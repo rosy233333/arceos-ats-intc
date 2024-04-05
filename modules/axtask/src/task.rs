@@ -174,6 +174,14 @@ impl AxTask {
         }
     }
 
+    pub fn join_sync(&self) -> Option<i32> {
+        assert!(!self.is_async());
+        unsafe {
+            let inner = &*(self.inner.as_ref() as *const dyn AbsTaskInner as *const () as *const TaskInner);
+            inner.join()
+        }
+    }
+
     /// This function should be called after this task is added into a block queue. Otherwise, task won't wake.
     pub(crate) fn sync_block(self: Arc<Self>) {
         assert!(!self.is_async());

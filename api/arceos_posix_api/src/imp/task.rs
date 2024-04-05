@@ -21,7 +21,7 @@ pub fn sys_getpid() -> c_int {
     syscall_body!(sys_getpid,
         #[cfg(feature = "multitask")]
         {
-            Ok(axtask::current().id().as_u64() as c_int)
+            Ok(axtask::current_id().unwrap() as c_int)
         }
         #[cfg(not(feature = "multitask"))]
         {
