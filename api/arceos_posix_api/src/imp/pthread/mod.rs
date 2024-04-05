@@ -72,6 +72,7 @@ impl Pthread {
 
     fn current_ptr() -> *mut Pthread {
         let tid = axtask::current_id().unwrap();
+        
         match TID_TO_PTHREAD.read().get(&tid) {
             None => core::ptr::null_mut(),
             Some(ptr) => ptr.0 as *mut Pthread,

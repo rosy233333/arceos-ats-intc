@@ -87,7 +87,7 @@ pub fn current() -> Option<AxTaskRef> {
 
 /// Gets the current task id.
 pub fn current_id() -> Option<u64> {
-    current().map(|t|{ t.id().as_u64() })
+    Some(current().map(|t|{ t.id().as_u64() }).unwrap_or(0))
 }
 
 // /// Initializes the task scheduler (for the primary CPU).
