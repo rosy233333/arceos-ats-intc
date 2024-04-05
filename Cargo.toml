@@ -70,7 +70,6 @@ members = [
     "apps/task/yield",
     "apps/task/priority",
     "apps/task/tls",
-    "apps/ats-intc-test", "apps/ats-intc-executor",
 ]
 
 [profile.release]
