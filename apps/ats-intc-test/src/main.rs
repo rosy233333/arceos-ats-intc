@@ -4,7 +4,8 @@
 extern crate alloc;
 
 use alloc::{boxed::Box, sync::Arc};
-use ats_intc::{AtsDriver, Task};
+// use ats_intc::{AtsIntc, Task, TaskRef};
+use ats_intc::AtsIntc;
 use axstd::*;
 use sync::atomic::Ordering;
 
@@ -147,25 +148,27 @@ pub fn test_mmio_region() {
 
 pub fn test_lib() {
     let executor_base: usize = 0xffff_ffc0_0f00_0000;
-    let lite_executor: AtsDriver = AtsDriver::new(executor_base);
-    // let task0 = Task::new(Box::pin(empty_future()), 0, ats_intc::TaskType::Other);
-    // let task1 = Task::new(Box::pin(empty_future()), 0, ats_intc::TaskType::Other);
-    // let task2 = Task::new(Box::pin(empty_future()), 2, ats_intc::TaskType::Other);
-    // let task3 = Task::new(Box::pin(empty_future()), 3, ats_intc::TaskType::Other);
-    // let task4 = Task::new(Box::pin(empty_future()), 0, ats_intc::TaskType::Other);
-    let task0: usize = 0;
-    let task1: usize = 1;
-    let task2: usize = 2;
-    let task3: usize = 3;
-    let task4: usize = 4;
+    let lite_executor: AtsIntc = AtsIntc::new(executor_base);
+
+    // let task0 = unsafe { TaskRef::virt_task(1) };
+    // let task1 = unsafe { TaskRef::virt_task(2) };
+    // let task2 = unsafe { TaskRef::virt_task(3) };
+    // let task3 = unsafe { TaskRef::virt_task(4) };
+    // let task4 = unsafe { TaskRef::virt_task(5) };
+
+    let task0: usize = 1;
+    let task1: usize = 2;
+    let task2: usize = 3;
+    let task3: usize = 4;
+    let task4: usize  = 5;
     
     // unsafe { (&*task1.as_ptr()).update_priority(1); }
 
-    lite_executor.load_handler(10, task0);
-    lite_executor.stask(task3, 0 , 3);
-    lite_executor.stask(task2, 0 , 2);
-    lite_executor.stask(task1, 0 , 1);
-    lite_executor.stask(task4, 0 , 0);
+    lite_executor.intr_push(10, task0);
+    lite_executor.ps_push(task3, 3);
+    lite_executor.ps_push(task2 , 2);
+    lite_executor.ps_push(task1 , 1);
+    lite_executor.ps_push(task4 , 0);
 
     // unsafe {
     //     println!("{:?}", (*lite_executor.ftask(0).unwrap().as_ptr()).priority.load(Ordering::Acquire));
@@ -175,11 +178,11 @@ pub fn test_lib() {
     //     println!("{:?}", (*lite_executor.ftask(0).unwrap().as_ptr()).priority.load(Ordering::Acquire));
     // }
 
-    println!("{:?}", lite_executor.ftask(0).unwrap());
-    println!("{:?}", lite_executor.ftask(0).unwrap());
-    println!("{:?}", lite_executor.ftask(0).unwrap());
-    println!("{:?}", lite_executor.ftask(0).unwrap());
-    // println!("{:?}", lite_executor.ftask(0).unwrap());
+    println!("{:?}", lite_executor.ps_fetch().unwrap());
+    println!("{:?}", lite_executor.ps_fetch().unwrap());
+    println!("{:?}", lite_executor.ps_fetch().unwrap());
+    println!("{:?}", lite_executor.ps_fetch().unwrap());
+    println!("{:?}", lite_executor.ps_fetch().unwrap());
 }
 
 async fn empty_future() -> i32 {0}

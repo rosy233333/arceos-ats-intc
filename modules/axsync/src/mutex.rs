@@ -5,7 +5,7 @@ use core::fmt;
 use core::ops::{Deref, DerefMut};
 use core::sync::atomic::{AtomicU64, Ordering};
 
-use axtask::{current, WaitQueue};
+use axtask::{current_id, WaitQueue};
 
 /// A mutual exclusion primitive useful for protecting shared data, similar to
 /// [`std::sync::Mutex`](https://doc.rust-lang.org/std/sync/struct.Mutex.html).
@@ -69,7 +69,7 @@ impl<T: ?Sized> Mutex<T> {
     /// The returned value may be dereferenced for data access
     /// and the lock will be dropped when the guard falls out of scope.
     pub fn lock(&self) -> MutexGuard<T> {
-        let current_id = current().unwrap().id().as_u64();
+        let current_id = current_id().unwrap();
         loop {
             // Can fail to lock even if the spinlock is not locked. May be more efficient than `try_lock`
             // when called in a loop.
@@ -85,7 +85,7 @@ impl<T: ?Sized> Mutex<T> {
                         owner_id,
                         current_id,
                         "{} tried to acquire mutex it already owns.",
-                        current().unwrap().id_name()
+                        current_id
                     );
                     // Wait until the lock looks unlocked before retrying
                     self.wq.wait_until(|| !self.is_locked());
@@ -101,7 +101,7 @@ impl<T: ?Sized> Mutex<T> {
     /// Try to lock this [`Mutex`], returning a lock guard if successful.
     #[inline(always)]
     pub fn try_lock(&self) -> Option<MutexGuard<T>> {
-        let current_id = current().unwrap().id().as_u64();
+        let current_id = current_id().unwrap();
         // The reason for using a strong compare_exchange is explained here:
         // https://github.com/Amanieu/parking_lot/pull/207#issuecomment-575869107
         if self
@@ -129,9 +129,9 @@ impl<T: ?Sized> Mutex<T> {
         let owner_id = self.owner_id.swap(0, Ordering::Release);
         assert_eq!(
             owner_id,
-            current().unwrap().id().as_u64(),
+            current_id().unwrap(),
             "{} tried to release mutex it doesn't own",
-            current().unwrap().id_name()
+            current_id().unwrap()
         );
         self.wq.notify_one(true);
     }

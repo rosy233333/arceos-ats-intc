@@ -7,6 +7,7 @@ use core::future::Future;
 use core::sync::atomic::AtomicBool;
 use core::sync::atomic::Ordering;
 use core::task::Poll;
+use core::time::Duration;
 
 use alloc::string::String;
 use alloc::string::ToString;
@@ -16,11 +17,18 @@ use axstd::thread;
 #[no_mangle]
 fn main() {
     println!("0.1");
+    // thread::spawn(|| {
+    //     println!("1.1");
+    //     thread::yield_now();
+    //     println!("1.2");
+    //     thread::yield_now();
+    //     println!("1.3");
+    // });
     thread::spawn(|| {
         println!("1.1");
-        thread::yield_now();
+        thread::sleep(Duration::from_secs(1));
         println!("1.2");
-        thread::yield_now();
+        thread::sleep(Duration::from_secs(1));
         println!("1.3");
     });
     thread::spawn(|| {

@@ -1,9 +1,13 @@
 //! Task APIs for multi-task configuration.
 
 use alloc::{string::String, sync::Arc};
-use ats_intc::AtsDriver;
+use ats_intc::AtsIntc;
+use axconfig::SMP;
+use axhal::cpu::this_cpu_id;
+use alloc::vec;
+use alloc::vec::Vec;
 
-use crate::ats::{Ats, ATS_DRIVER, ATS_EXECUTOR, CURRENT_TASK};
+use crate::ats::{Ats, ATS_DRIVER, ATS_EXECUTORS, CURRENT_TASKS};
 // pub(crate) use crate::run_queue::{AxRunQueue, RUN_QUEUE};
 
 use crate::task::{AbsTaskInner, AsyncTaskInner, AxTask};
@@ -62,19 +66,28 @@ use core::future::Future;
 
 /// Init the scheduler/executor.
 pub fn init() {
-    ATS_DRIVER.init_by(AtsDriver::new(0xffff_ffc0_0f00_0000));
-    ATS_EXECUTOR.init_by(Ats::new(PROCESS_ID));
-    CURRENT_TASK.init_by(CurrentTask::new());
+    ATS_DRIVER.init_by(AtsIntc::new(0xffff_ffc0_0f00_0000));
+    ATS_EXECUTORS.init_by(vec![Ats::new(PROCESS_ID); SMP]);
+    CURRENT_TASKS.init_by(vec![CurrentTask::new(); SMP]);
+    // ATS_EXECUTORS.init_by(Vec::new());
+    // CURRENT_TASKS.init_by(Vec::new());
+    // for i in 0 .. SMP {
+    //     ATS_EXECUTORS.push(Ats::new(PROCESS_ID));
+    //     CURRENT_TASKS.push(CurrentTask::new());
+    // }
+    #[cfg(feature = "irq")]
+    crate::timers::init();
 }
 
 /// Gets the current task.
 pub fn current() -> Option<AxTaskRef> {
-    CURRENT_TASK.clone()
+    let cpu_id = this_cpu_id();
+    CURRENT_TASKS[cpu_id].get_clone()
 }
 
 /// Gets the current task id.
 pub fn current_id() -> Option<u64> {
-    current().map(|t|{ t.id().as_u64() })
+    Some(current().map(|t|{ t.id().as_u64() }).unwrap_or(0))
 }
 
 // /// Initializes the task scheduler (for the primary CPU).
@@ -94,8 +107,8 @@ pub fn current_id() -> Option<u64> {
 // }
 
 /// Run the task executor
-pub fn run_executor() -> ! {
-    ATS_EXECUTOR.run()
+pub fn run_executor(cpu_id: usize) -> ! {
+    ATS_EXECUTORS[cpu_id].run()
 }
 
 /// Handles periodic timer ticks for the task manager.
@@ -105,7 +118,7 @@ pub fn run_executor() -> ! {
 #[doc(cfg(feature = "irq"))]
 pub fn on_timer_tick() {
     crate::timers::check_events();
-    RUN_QUEUE.lock().scheduler_timer_tick();
+    // RUN_QUEUE.lock().scheduler_timer_tick();
 }
 
 /// Spawns a new task with the given parameters.
@@ -117,8 +130,8 @@ where
 {
     let task = TaskInner::new(f, name, stack_size);
     let priority = task.inner.get_priority();
-    let task_ref = Arc::into_raw(task.clone()) as *const () as usize;
-    ATS_DRIVER.stask(task_ref, PROCESS_ID, priority);
+    let task_ref = task.clone().into_task_ref();
+    ATS_DRIVER.ps_push(task_ref, priority);
     task
 }
 
@@ -128,8 +141,8 @@ where
 {
     let task = TaskInner::new_init(f, name, stack_size);
     let priority = task.inner.get_priority();
-    let task_ref = Arc::into_raw(task.clone()) as *const () as usize;
-    ATS_DRIVER.stask(task_ref, PROCESS_ID, priority);
+    let task_ref = task.clone().into_task_ref();
+    ATS_DRIVER.ps_push(task_ref, priority);
     task
 }
 
@@ -162,8 +175,8 @@ where
 {
     let task = AsyncTaskInner::new(f, name);
     let priority = task.inner.get_priority();
-    let task_ref = Arc::into_raw(task.clone()) as *const () as usize;
-    ATS_DRIVER.stask(task_ref, PROCESS_ID, priority);
+    let task_ref = task.clone().into_task_ref();
+    ATS_DRIVER.ps_push(task_ref, priority);
     task
 }
 
@@ -219,8 +232,11 @@ pub fn sleep(dur: core::time::Duration) {
 /// If the feature `irq` is not enabled, it uses busy-wait instead.
 pub fn sleep_until(deadline: axhal::time::TimeValue) {
     // TODO
-    // #[cfg(feature = "irq")]
-    // RUN_QUEUE.lock().sleep_until(deadline);
+    #[cfg(feature = "irq")] {
+        // RUN_QUEUE.lock().sleep_until(deadline);
+        let current_task = current().unwrap();
+        current_task.sync_sleep_until(deadline);
+    }
     #[cfg(not(feature = "irq"))]
     axhal::time::busy_wait_until(deadline);
 }

@@ -13,10 +13,10 @@ pub mod mutex;
 lazy_static::lazy_static! {
     static ref TID_TO_PTHREAD: RwLock<BTreeMap<u64, ForceSendSync<ctypes::pthread_t>>> = {
         let mut map = BTreeMap::new();
-        let main_task = axtask::current();
-        let main_tid = main_task.id().as_u64();
+        let main_task = axtask::current().unwrap();
+        let main_tid = axtask::current_id().unwrap();
         let main_thread = Pthread {
-            inner: main_task.as_task_ref().clone(),
+            inner: main_task.clone(),
             retval: Arc::new(Packet {
                 result: UnsafeCell::new(core::ptr::null_mut()),
             }),
@@ -71,7 +71,8 @@ impl Pthread {
     }
 
     fn current_ptr() -> *mut Pthread {
-        let tid = axtask::current().id().as_u64();
+        let tid = axtask::current_id().unwrap();
+        
         match TID_TO_PTHREAD.read().get(&tid) {
             None => core::ptr::null_mut(),
             Some(ptr) => ptr.0 as *mut Pthread,
@@ -94,7 +95,7 @@ impl Pthread {
         }
 
         let thread = unsafe { Box::from_raw(ptr as *mut Pthread) };
-        thread.inner.join();
+        thread.inner.join_sync();
         let tid = thread.inner.id().as_u64();
         let retval = unsafe { *thread.retval.result.get() };
         TID_TO_PTHREAD.write().remove(&tid);

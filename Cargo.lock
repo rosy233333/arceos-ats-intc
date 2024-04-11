@@ -240,7 +240,17 @@ dependencies = [
 name = "ats-intc"
 version = "0.1.0"
 dependencies = [
- "ats-intc-pac",
+ "ats-intc-pac 0.1.0",
+ "crossbeam",
+ "log",
+]
+
+[[package]]
+name = "ats-intc"
+version = "0.1.0"
+source = "git+https://github.com/ATS-INTC/ats-intc?branch=axu15eg#94cce6039bf261af8fc769bb5426982c0bcf51db"
+dependencies = [
+ "ats-intc-pac 0.1.0 (git+https://github.com/ATS-INTC/ats-intc?branch=axu15eg)",
  "crossbeam",
  "log",
 ]
@@ -249,7 +259,7 @@ dependencies = [
 name = "ats-intc-executor"
 version = "0.1.0"
 dependencies = [
- "ats-intc",
+ "ats-intc 0.1.0",
  "axstd",
  "crossbeam-utils",
 ]
@@ -263,10 +273,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "ats-intc-pac"
+version = "0.1.0"
+source = "git+https://github.com/ATS-INTC/ats-intc?branch=axu15eg#94cce6039bf261af8fc769bb5426982c0bcf51db"
+dependencies = [
+ "cortex-m",
+ "vcell",
+]
+
+[[package]]
 name = "ats-intc-test"
 version = "0.1.0"
 dependencies = [
- "ats-intc",
+ "ats-intc 0.1.0",
  "axstd",
 ]
 
@@ -522,7 +541,7 @@ dependencies = [
 name = "axtask"
 version = "0.1.0"
 dependencies = [
- "ats-intc",
+ "ats-intc 0.1.0 (git+https://github.com/ATS-INTC/ats-intc?branch=axu15eg)",
  "axconfig",
  "axhal",
  "axtask",

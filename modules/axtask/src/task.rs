@@ -10,7 +10,7 @@ use core::task::{Context, Poll};
 use core::{alloc::Layout, cell::UnsafeCell, fmt, ptr::NonNull};
 
 use core::arch::asm;
-use ats_intc::AtsDriver;
+use ats_intc::{AtsIntc, TaskRef};
 
 #[cfg(feature = "preempt")]
 use core::sync::atomic::AtomicUsize;
@@ -38,8 +38,8 @@ impl Wake for AxTask {
     fn wake(self: Arc<Self>) {
         self.inner.set_state(TaskState::Ready);
         let priority = self.inner.get_priority();
-        let task_ref = Arc::into_raw(self) as *const _ as usize;
-        ATS_DRIVER.stask(task_ref, PROCESS_ID, priority);
+        let task_ref = self.into_task_ref();
+        ATS_DRIVER.ps_push(task_ref, priority);
     }
 }
 
@@ -116,6 +116,16 @@ impl AxTask {
         self.inner.set_in_wait_queue(in_wait_queue)
     }
 
+    #[cfg(feature = "irq")]
+    pub(crate) fn in_timer_list(&self) -> bool {
+        self.inner.in_timer_list()
+    }
+
+    #[cfg(feature = "irq")]
+    pub(crate) fn set_in_timer_list(&self, in_timer_list: bool) {
+        self.inner.set_in_timer_list(in_timer_list)
+    }
+
     pub(crate) fn is_async(&self) -> bool {
         self.inner.is_async()
     }
@@ -127,7 +137,8 @@ impl AxTask {
         self.set_state(TaskState::Ready);
 
         let priority = self.get_priority();
-        ATS_DRIVER.stask(Arc::into_raw(self.clone()) as *const () as usize, PROCESS_ID, priority);
+        let task_ref = self.clone().into_task_ref();
+        ATS_DRIVER.ps_push(task_ref, priority);
 
         unsafe {
             
@@ -161,6 +172,47 @@ impl AxTask {
             let new_ctx = inner.ret_ctx_mut_ptr().as_ref().unwrap();
             old_ctx.switch_to_return_pending(new_ctx);
         }
+    }
+
+    pub fn join_sync(&self) -> Option<i32> {
+        assert!(!self.is_async());
+        unsafe {
+            let inner = &*(self.inner.as_ref() as *const dyn AbsTaskInner as *const () as *const TaskInner);
+            inner.join()
+        }
+    }
+
+    /// This function should be called after this task is added into a block queue. Otherwise, task won't wake.
+    pub(crate) fn sync_block(self: Arc<Self>) {
+        assert!(!self.is_async());
+        assert!(self.is_running());
+
+        self.set_state(TaskState::Blocked);
+
+        unsafe {
+            let inner = &*(self.inner.as_ref() as *const dyn AbsTaskInner as *const () as *const TaskInner);
+            let old_ctx = inner.ctx_mut_ptr().as_mut().unwrap();
+            let new_ctx = inner.ret_ctx_mut_ptr().as_ref().unwrap();
+            old_ctx.switch_to_return_pending(new_ctx);
+        }
+    }
+
+    pub fn sync_sleep_until(self: Arc<Self>, deadline: axhal::time::TimeValue) {
+        assert!(self.is_running());
+        assert!(!self.is_async());
+
+        let now = axhal::time::current_time();
+        if now < deadline {
+            crate::timers::set_alarm_wakeup(deadline, self.clone());
+            self.set_state(TaskState::Blocked);
+            unsafe {
+                let inner = &*(self.inner.as_ref() as *const dyn AbsTaskInner as *const () as *const TaskInner);
+                let old_ctx = inner.ctx_mut_ptr().as_mut().unwrap();
+                let new_ctx = inner.ret_ctx_mut_ptr().as_ref().unwrap();
+                old_ctx.switch_to_return_pending(new_ctx);
+            }
+        }
+        
     }
 
     pub fn sync_exit(self: Arc<Self>, exit_code: i32) -> ! {
@@ -212,6 +264,15 @@ impl AxTask {
 
             unreachable!();
         // }
+    }
+
+    /// SAFETY: `task_ref` must be generated from `Self::into_task_ref`
+    pub(crate) unsafe fn from_task_ref(task_ref: TaskRef) -> Arc<Self> {
+        Arc::from_raw(task_ref.as_ptr() as *const () as *const Self)
+    } 
+
+    pub(crate) fn into_task_ref(self: Arc<Self>) -> TaskRef {
+        unsafe { TaskRef::virt_task(Arc::into_raw(self) as usize) }
     }
 }
 
@@ -942,7 +1003,7 @@ impl CurrentTask {
     //     self.0.map(|a| { ManuallyDrop::into_inner(a) })
     // }
 
-    pub(crate) fn clone(&self) -> Option<AxTaskRef> {
+    pub(crate) fn get_clone(&self) -> Option<AxTaskRef> {
         self.0.borrow().as_deref().map(|a| { a.clone() })
     }
 
@@ -979,6 +1040,14 @@ impl CurrentTask {
 
 unsafe impl Send for CurrentTask { }
 unsafe impl Sync for CurrentTask { }
+
+/// Only used for initialization
+impl Clone for CurrentTask {
+    fn clone(&self) -> Self {
+        assert!(self.0.borrow().is_none());
+        Self::new()
+    }
+}
 
 extern "C" fn task_entry() -> ! {
     // // release the lock that was implicitly held across the reschedule

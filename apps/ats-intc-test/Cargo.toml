@@ -7,6 +7,6 @@ edition = "2021"
 
 [dependencies]
 axstd = { path = "../../ulib/axstd", features = ["paging"]}
-ats-intc = { path = "../../../ats-intc", default-features = false, features = ["no-simul", "task-as-usize"] }
+ats-intc = { path = "../../../ats-intc", default-features = false, features = ["task-as-usize"] }
 
 

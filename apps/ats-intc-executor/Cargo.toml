@@ -8,4 +8,4 @@ edition = "2021"
 [dependencies]
 axstd = {path = "../../ulib/axstd", features = ["paging", "alloc"]}
 crossbeam-utils = {version = "0.8", default-features = false}
-ats-intc = {path = "../../../ats-intc", default-features = false, features = ["no-simul"]}
+ats-intc = {path = "../../../ats-intc", default-features = false}
