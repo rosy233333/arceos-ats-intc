@@ -153,12 +153,45 @@ pub fn exit(exit_code: i32) -> ! {
     RUN_QUEUE.lock().exit_current(exit_code)
 }
 
+cfg_if::cfg_if! {
+    if #[cfg(feature = "async")] {
+        use core::future::poll_fn;
+        use core::task::Poll;
+        use crate::run_queue::IDLE_TASK;
+        use ats_intc::{Task, TaskType, AtsIntc};
+        use alloc::boxed::Box;
+        use crate::task::TaskState;
+        static ATSINTC: AtsIntc = AtsIntc::new(0xffff_ffc0_0f00_0000);
+
+        fn pick_next() -> Option<AxTaskRef> {
+            RUN_QUEUE.lock().pick_next()
+        }
+
+        fn axtask_run(axtask: Arc<AxTask>) {
+            axtask.set_state(TaskState::Running);
+            let ctx_ptr = unsafe { &*axtask.ctx_mut_ptr() };
+            unsafe { CurrentTask::set_current(CurrentTask::get(), axtask) };
+            let fut = poll_fn(|_cx| {
+                unsafe { (*IDLE_TASK.current_ref_mut_raw().ctx_mut_ptr()).switch_to(ctx_ptr); }
+                Poll::<i32>::Pending
+            });
+            let task_ref = Task::new(Box::pin(fut), 0, TaskType::Process, &ATSINTC);
+            let _ = task_ref.poll();
+        }
+    }
+}
+
 /// The idle task routine.
 ///
 /// It runs an infinite loop that keeps calling [`yield_now()`].
 pub fn run_idle() -> ! {
     loop {
+        #[cfg(not(feature = "async"))]
         yield_now();
+        #[cfg(feature = "async")]
+        if let Some(task) = pick_next() {
+            axtask_run(task.clone());
+        }
         debug!("idle task: waiting for IRQs...");
         #[cfg(feature = "irq")]
         axhal::arch::wait_for_irqs();

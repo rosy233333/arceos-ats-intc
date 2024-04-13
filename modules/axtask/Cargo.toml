@@ -24,6 +24,8 @@ sched_fifo = ["multitask"]
 sched_rr = ["multitask", "preempt"]
 sched_cfs = ["multitask", "preempt"]
 
+async = ["dep:ats-intc"]
+
 test = ["percpu?/sp-naive"]
 
 [dependencies]
@@ -39,6 +41,7 @@ scheduler = { path = "../../crates/scheduler", optional = true }
 timer_list = { path = "../../crates/timer_list", optional = true }
 kernel_guard = { path = "../../crates/kernel_guard", optional = true }
 crate_interface = { path = "../../crates/crate_interface", optional = true }
+ats-intc = { git = "https://github.com/ATS-INTC/ats-intc.git", branch = "axu15eg", optional = true }
 
 [dev-dependencies]
 rand = "0.8"

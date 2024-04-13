@@ -16,7 +16,7 @@ static EXITED_TASKS: SpinNoIrq<VecDeque<AxTaskRef>> = SpinNoIrq::new(VecDeque::n
 static WAIT_FOR_EXIT: WaitQueue = WaitQueue::new();
 
 #[percpu::def_percpu]
-static IDLE_TASK: LazyInit<AxTaskRef> = LazyInit::new();
+pub(crate) static IDLE_TASK: LazyInit<AxTaskRef> = LazyInit::new();
 
 pub(crate) struct AxRunQueue {
     scheduler: Scheduler,
@@ -114,6 +114,7 @@ impl AxRunQueue {
 
         curr.set_state(TaskState::Blocked);
         wait_queue_push(curr.clone());
+        unsafe { RUN_QUEUE.force_unlock() };
         self.resched(false);
     }
 
@@ -188,6 +189,13 @@ impl AxRunQueue {
             CurrentTask::set_current(prev_task, next_task);
             (*prev_ctx_ptr).switch_to(&*next_ctx_ptr);
         }
+    }
+}
+
+#[cfg(feature = "async")]
+impl AxRunQueue {
+    pub fn pick_next(&mut self) -> Option<AxTaskRef> {
+        self.scheduler.pick_next_task()
     }
 }
 
