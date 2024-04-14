@@ -256,6 +256,7 @@ impl UdpSocket {
     where
         F: FnMut() -> AxResult<T>,
     {
+        #[cfg(feature = "smoltcp")]
         if self.is_nonblocking() {
             f()
         } else {
@@ -266,6 +267,15 @@ impl UdpSocket {
                     Err(AxError::WouldBlock) => axtask::yield_now(),
                     Err(e) => return Err(e),
                 }
+            }
+        }
+        #[cfg(feature = "async_smoltcp")]
+        loop {
+            SOCKET_SET.poll_interfaces();
+            match f() {
+                Ok(t) => return Ok(t),
+                Err(AxError::WouldBlock) => axtask::block(),
+                Err(e) => return Err(e),
             }
         }
     }

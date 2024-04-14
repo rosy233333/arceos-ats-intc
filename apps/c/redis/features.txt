@@ -7,4 +7,3 @@ fs
 net
 pipe
 epoll
-async

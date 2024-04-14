@@ -11,7 +11,8 @@ documentation = "https://rcore-os.github.io/arceos/axnet/index.html"
 
 [features]
 smoltcp = []
-default = ["smoltcp"]
+async_smoltcp = ["axtask/sched_atsintc"]
+default = ["async_smoltcp"]
 
 [dependencies]
 log = "0.4"

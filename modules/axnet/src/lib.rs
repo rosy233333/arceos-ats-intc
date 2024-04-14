@@ -26,7 +26,7 @@ extern crate log;
 extern crate alloc;
 
 cfg_if::cfg_if! {
-    if #[cfg(feature = "smoltcp")] {
+    if #[cfg(any(feature = "smoltcp", feature = "async_smoltcp"))] {
         mod smoltcp_impl;
         use smoltcp_impl as net_impl;
     }
