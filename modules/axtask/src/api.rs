@@ -156,6 +156,25 @@ pub fn exit(exit_code: i32) -> ! {
     RUN_QUEUE.lock().exit_current(exit_code)
 }
 
+#[cfg(feature = "sched_atsintc")]
+pub use block::*;
+#[cfg(feature = "sched_atsintc")]
+mod block {
+    use super::AxTaskRef;
+    use crate::RUN_QUEUE;
+    use spinlock::SpinNoIrq;
+    use alloc::collections::VecDeque;
+    pub static NET_WAIT: SpinNoIrq<VecDeque<AxTaskRef>> = SpinNoIrq::new(VecDeque::new());
+    pub fn block() {
+        RUN_QUEUE.lock().block_current(|task| {
+            // change the task
+            task.set_in_wait_queue(true);
+            debug!("{} is waiting for net request", task.id_name());
+            NET_WAIT.lock().push_back(task);
+        });
+    }
+}
+
 cfg_if::cfg_if! {
     if #[cfg(feature = "async")] {
         use core::future::poll_fn;
