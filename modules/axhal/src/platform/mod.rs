@@ -1,8 +1,10 @@
 //! Platform-specific operations.
 
 cfg_if::cfg_if! {
-    if #[cfg(target_arch = "aarch64")]{
+    if #[cfg(target_arch = "aarch64")] {
         mod aarch64_common;
+    } else if #[cfg(target_arch = "riscv64")] {
+        mod riscv64_common;
     }
 }
 
@@ -11,11 +13,11 @@ cfg_if::cfg_if! {
         mod x86_pc;
         pub use self::x86_pc::*;
     } else if #[cfg(all(target_arch = "riscv64", platform_family = "riscv64-qemu-virt"))] {
-        mod riscv64_common;
-        pub use self::riscv64_common::*;
+        mod riscv_qemu_virt;
+        pub use self::riscv_qemu_virt::*;
     } else if #[cfg(all(target_arch = "riscv64", platform_family = "riscv64-axu15eg"))] {
-        mod riscv64_common;
-        pub use self::riscv64_common::*;
+        mod riscv_axu15eg;
+        pub use self::riscv_axu15eg::*;
     } else if #[cfg(all(target_arch = "aarch64", platform_family = "aarch64-qemu-virt"))] {
         mod aarch64_qemu_virt;
         pub use self::aarch64_qemu_virt::*;

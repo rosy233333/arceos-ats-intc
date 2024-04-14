@@ -49,3 +49,9 @@ pci-ranges = [
 
 # Timer interrupt frequency in Hz.
 timer-frequency = "10_000_000"      # 10MHz
+
+# ATSINTC base address
+atsintc-paddr = "0x0f00_0000"
+
+# NIC interrupt
+net-irq = "8"

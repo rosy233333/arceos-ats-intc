@@ -25,3 +25,17 @@ mmio-regions = [
 
 # Timer interrupt frequency in Hz.
 timer-frequency = "10_000_000"      # 10MHz
+
+# ATSINTC base address
+atsintc-paddr = "0x1000_0000"
+# Axi-Eth base address
+axieth-paddr = "0x6014_0000"
+# Axi-Dma base address
+axidma-paddr = "0x6010_0000"
+
+# NIC MAC interrupt
+net-irq = "3"
+# NIC dma mm2s interrupt
+dma-mm2s-irq = "4"
+# NIC s2mm interrupt
+dma-s2mm-irq = "5"
