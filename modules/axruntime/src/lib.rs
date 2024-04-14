@@ -283,6 +283,11 @@ fn init_interrupt() {
         axtask::on_timer_tick();
     });
 
+    use axhal::irq::EXT_IRQ_NUM;
+    axhal::irq::register_handler(EXT_IRQ_NUM, || {
+        trace!("dummy external interrupt handler");
+    });
+
     // Enable IRQs before starting app
     axhal::arch::enable_irqs();
 }

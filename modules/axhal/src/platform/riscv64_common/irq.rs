@@ -25,6 +25,9 @@ pub const MAX_IRQ_COUNT: usize = 1024;
 /// The timer IRQ number (supervisor timer interrupt in `scause`).
 pub const TIMER_IRQ_NUM: usize = S_TIMER;
 
+/// The external IRQ number (supervisor external interrupt in `scause`).
+pub const EXT_IRQ_NUM: usize = S_EXT;
+
 macro_rules! with_cause {
     ($cause: expr, @TIMER => $timer_op: expr, @EXT => $ext_op: expr $(,)?) => {
         match $cause {
