@@ -123,6 +123,11 @@ impl<'a> SocketSetWrapper<'a> {
         ETH0.poll(&self.0);
     }
 
+    pub fn poll_interface_return_delay(&self) -> Option<smoltcp::time::Duration> {
+        ETH0.poll(&self.0);
+        ETH0.poll_delay(&self.0)
+    }
+
     pub fn remove(&self, handle: SocketHandle) {
         self.0.lock().remove(handle);
         debug!("socket {}: destroyed", handle);
@@ -176,6 +181,13 @@ impl InterfaceWrapper {
         let mut sockets = sockets.lock();
         let timestamp = Self::current_time();
         iface.poll(timestamp, dev.deref_mut(), &mut sockets);
+    }
+
+    pub fn poll_delay(&self, sockets: &Mutex<SocketSet>) -> Option<smoltcp::time::Duration>{
+        let mut iface = self.iface.lock();
+        let mut sockets = sockets.lock();
+        let timestamp = Self::current_time();
+        iface.poll_delay(timestamp, &mut sockets)
     }
 }
 
@@ -298,6 +310,10 @@ fn snoop_tcp_packet(buf: &[u8], sockets: &mut SocketSet<'_>) -> Result<(), smolt
 /// packets to the NIC.
 pub fn poll_interfaces() {
     SOCKET_SET.poll_interfaces();
+}
+
+pub fn poll_interface_return_delay() -> Option<smoltcp::time::Duration> {
+    SOCKET_SET.poll_interface_return_delay()
 }
 
 /// Benchmark raw socket transmit bandwidth.

@@ -11,7 +11,11 @@ documentation = "https://rcore-os.github.io/arceos/axnet/index.html"
 
 [features]
 smoltcp = []
-default = ["smoltcp"]
+poll = []
+poll_async = []
+interrupt = []
+interrupt_async = []
+default = ["smoltcp", "poll_async"]
 
 [dependencies]
 log = "0.4"

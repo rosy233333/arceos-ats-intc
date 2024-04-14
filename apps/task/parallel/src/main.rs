@@ -6,6 +6,7 @@
 extern crate axstd as std;
 
 use rand::{rngs::SmallRng, RngCore, SeedableRng};
+use core::time;
 use std::thread;
 use std::{sync::Arc, vec::Vec};
 
@@ -69,6 +70,7 @@ fn main() {
     }
 
     let mut tasks = Vec::with_capacity(NUM_TASKS);
+    let start_time: std::time::Instant = std::time::Instant::now();
     for i in 0..NUM_TASKS {
         let vec = vec.clone();
         tasks.push(thread::spawn(move || {
@@ -91,6 +93,9 @@ fn main() {
     }
 
     let actual = tasks.into_iter().map(|t| t.join().unwrap()).sum();
+    let end_time: std::time::Instant = std::time::Instant::now();
+    let used_time = end_time.duration_since(start_time);
+    println!("used time = {:?}", used_time);
     println!("sum = {}", actual);
     assert_eq!(expect, actual);
 

@@ -212,7 +212,31 @@ impl AxTask {
                 old_ctx.switch_to_return_pending(new_ctx);
             }
         }
+    }
+
+    pub async fn async_sleep_until(self: Arc<Self>, deadline: axhal::time::TimeValue) {
+        struct AsyncSleepUntil {
+            task: Arc<AxTask>,
+            deadline: axhal::time::TimeValue,
+        }
+
+        impl Future for AsyncSleepUntil {
+            type Output = ();
         
+            fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+                assert!(self.task.is_running());
+                let now = axhal::time::current_time();
+                if now < self.deadline {
+                    crate::timers::set_alarm_wakeup(self.deadline, self.task.clone());
+                    Poll::Pending
+                }
+                else {
+                    Poll::Ready(())
+                }
+            }
+        }
+
+        AsyncSleepUntil { task: self, deadline }.await
     }
 
     pub fn sync_exit(self: Arc<Self>, exit_code: i32) -> ! {
@@ -1056,7 +1080,7 @@ extern "C" fn task_entry() -> ! {
     axhal::arch::enable_irqs();
     let task = crate::current().unwrap();
     assert!(!task.is_async());
-    let task_inner = unsafe { &*(task.inner.as_ref() as *const dyn AbsTaskInner as *const _ as *const TaskInner) };
+    let task_inner = unsafe { &*(task.inner.as_ref() as *const dyn AbsTaskInner as *const () as *const TaskInner) };
     if let Some(entry) = task_inner.entry {
         unsafe { Box::from_raw(entry)() };
     }

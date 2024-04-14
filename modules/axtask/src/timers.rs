@@ -1,3 +1,5 @@
+use core::task::Waker;
+
 use alloc::sync::Arc;
 use axhal::time::current_time;
 use lazy_init::LazyInit;

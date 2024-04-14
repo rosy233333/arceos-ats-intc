@@ -90,6 +90,26 @@ pub fn current_id() -> Option<u64> {
     Some(current().map(|t|{ t.id().as_u64() }).unwrap_or(0))
 }
 
+pub fn register_irq_handler<F>(irq_num: usize, handler: F) -> bool
+where
+    F: Fn() + Send + 'static,
+{
+    let task = TaskInner::new(handler, "".into(), axconfig::TASK_STACK_SIZE);
+    task.set_priority(0);
+    ATS_DRIVER.intr_push(irq_num, task.into_task_ref());
+    true
+}
+
+pub fn register_async_irq_handler<F>(irq_num: usize, handler: F) -> bool
+where
+    F: Future<Output = i32> + Send + Sync + 'static,
+{
+    let task = AsyncTaskInner::new(handler, "".into());
+    task.set_priority(0);
+    ATS_DRIVER.intr_push(irq_num, task.into_task_ref());
+    true
+}
+
 // /// Initializes the task scheduler (for the primary CPU).
 // pub fn init_scheduler() {
 //     info!("Initialize scheduling...");
@@ -231,11 +251,24 @@ pub fn sleep(dur: core::time::Duration) {
 ///
 /// If the feature `irq` is not enabled, it uses busy-wait instead.
 pub fn sleep_until(deadline: axhal::time::TimeValue) {
-    // TODO
     #[cfg(feature = "irq")] {
         // RUN_QUEUE.lock().sleep_until(deadline);
         let current_task = current().unwrap();
         current_task.sync_sleep_until(deadline);
+    }
+    #[cfg(not(feature = "irq"))]
+    axhal::time::busy_wait_until(deadline);
+}
+
+pub async fn async_sleep(dur: core::time::Duration) {
+    async_sleep_until(axhal::time::current_time() + dur).await;
+}
+
+pub async fn async_sleep_until(deadline: axhal::time::TimeValue) {
+    #[cfg(feature = "irq")] {
+        // RUN_QUEUE.lock().sleep_until(deadline);
+        let current_task = current().unwrap();
+        current_task.async_sleep_until(deadline).await;
     }
     #[cfg(not(feature = "irq"))]
     axhal::time::busy_wait_until(deadline);
