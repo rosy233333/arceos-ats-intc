@@ -1784,6 +1784,7 @@ dependencies = [
 name = "scheduler"
 version = "0.1.0"
 dependencies = [
+ "ats-intc",
  "linked_list",
 ]
 

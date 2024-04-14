@@ -34,6 +34,7 @@ multitask = ["alloc", "axtask/multitask", "axsync/multitask", "axruntime/multita
 sched_fifo = ["axtask/sched_fifo"]
 sched_rr = ["axtask/sched_rr", "irq"]
 sched_cfs = ["axtask/sched_cfs", "irq"]
+sched_atsintc = ["axtask/sched_atsintc"]
 
 async = ["axtask/async"]
 

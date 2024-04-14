@@ -23,6 +23,7 @@ preempt = ["irq", "percpu?/preempt", "kernel_guard/preempt"]
 sched_fifo = ["multitask"]
 sched_rr = ["multitask", "preempt"]
 sched_cfs = ["multitask", "preempt"]
+sched_atsintc = ["multitask"]
 
 async = ["dep:ats-intc"]
 

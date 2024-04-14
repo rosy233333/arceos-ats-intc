@@ -20,6 +20,9 @@ cfg_if::cfg_if! {
     } else if #[cfg(feature = "sched_cfs")] {
         pub(crate) type AxTask = scheduler::CFSTask<TaskInner>;
         pub(crate) type Scheduler = scheduler::CFScheduler<TaskInner>;
+    } else if #[cfg(feature = "sched_atsintc")] {
+        pub(crate) type AxTask = scheduler::AtsTask<TaskInner>;
+        pub(crate) type Scheduler = scheduler::ATScheduler<TaskInner>;
     } else {
         // If no scheduler features are set, use FIFO as the default.
         pub(crate) type AxTask = scheduler::FifoTask<TaskInner>;

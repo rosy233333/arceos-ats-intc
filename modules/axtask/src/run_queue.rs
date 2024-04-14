@@ -25,7 +25,10 @@ pub(crate) struct AxRunQueue {
 impl AxRunQueue {
     pub fn new() -> SpinNoIrq<Self> {
         let gc_task = TaskInner::new(gc_entry, "gc".into(), axconfig::TASK_STACK_SIZE);
+        #[cfg(not(feature = "sched_atsintc"))]
         let mut scheduler = Scheduler::new();
+        #[cfg(feature = "sched_atsintc")]
+        let mut scheduler = Scheduler::new(0xffff_ffc0_0f00_0000);
         scheduler.add_task(gc_task);
         SpinNoIrq::new(Self { scheduler })
     }
