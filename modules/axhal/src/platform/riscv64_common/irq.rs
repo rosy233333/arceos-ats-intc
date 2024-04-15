@@ -25,24 +25,19 @@ pub const MAX_IRQ_COUNT: usize = 1024;
 /// The timer IRQ number (supervisor timer interrupt in `scause`).
 pub const TIMER_IRQ_NUM: usize = S_TIMER;
 
-/// The external IRQ number (supervisor external interrupt in `scause`).
-pub const EXT_IRQ_NUM: usize = S_EXT;
-
 macro_rules! with_cause {
     ($cause: expr, @TIMER => $timer_op: expr, @EXT => $ext_op: expr $(,)?) => {
         match $cause {
             S_TIMER => $timer_op,
-            S_EXT => $ext_op,
-            _ => panic!("invalid trap cause: {:#x}", $cause),
+            S_SOFT => panic!("invalid trap cause: S_SOFT"),
+            _ => $ext_op,
         }
     };
 }
 
 /// Enables or disables the given IRQ.
 pub fn set_enable(scause: usize, _enabled: bool) {
-    if scause == S_EXT {
-        // TODO: set enable in PLIC
-    }
+    crate::platform::plic::enable(scause, _enabled);
 }
 
 /// Registers an IRQ handler for the given IRQ.
@@ -74,11 +69,16 @@ pub fn dispatch_irq(scause: usize) {
             trace!("IRQ: timer");
             TIMER_HANDLER();
         },
-        @EXT => crate::irq::dispatch_irq_common(0), // TODO: get IRQ number from PLIC
+        @EXT => {
+            if let Some(irq) = crate::platform::irq::get_irq() {
+                crate::irq::dispatch_irq_common(irq as _)
+            }
+        },
     );
 }
 
 pub(super) fn init_percpu() {
+    crate::platform::irq::init_ext_interrupt();
     // enable soft interrupts, timer interrupts, and external interrupts
     unsafe {
         sie::set_ssoft();

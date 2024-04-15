@@ -28,6 +28,8 @@ timer-frequency = "10_000_000"      # 10MHz
 
 # ATSINTC base address
 atsintc-paddr = "0x1000_0000"
+# PLIC base address
+plic-paddr = "0x0c00_0000"
 # Axi-Eth base address
 axieth-paddr = "0x6014_0000"
 # Axi-Dma base address

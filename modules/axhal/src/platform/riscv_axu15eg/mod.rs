@@ -17,6 +17,12 @@ pub mod time {
 #[cfg(feature = "irq")]
 pub mod irq {
     pub use crate::platform::riscv64_common::irq::*;
+    pub use super::plic::*;
+    pub fn init_ext_interrupt() {
+        register_handler(3, || {
+            debug!("dummy net interrupt handler");
+        });
+    }
 }
 
 #[cfg(feature = "smp")]
@@ -28,3 +34,6 @@ pub use crate::platform::riscv64_common::platform_init;
 
 #[cfg(feature = "smp")]
 pub use crate::platform::riscv64_common::platform_init_secondary;
+
+#[cfg(feature = "irq")]
+pub mod plic;

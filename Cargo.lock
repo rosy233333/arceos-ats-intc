@@ -406,6 +406,7 @@ dependencies = [
  "ratio",
  "raw-cpuid 11.0.1",
  "riscv",
+ "rv-plic",
  "sbi-rt",
  "spinlock",
  "static_assertions",
@@ -1746,6 +1747,14 @@ name = "rustversion"
 version = "1.0.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7ffc183a10b4478d04cbbbfc96d0873219d962dd5accaff2ffbd4ceb7df837f4"
+
+[[package]]
+name = "rv-plic"
+version = "0.4.0"
+source = "git+https://github.com/duskmoon314/rv-plic#e94d511e04c863bc4cafe918fb0ca33f9cc8461a"
+dependencies = [
+ "volatile-register",
+]
 
 [[package]]
 name = "ryu"
