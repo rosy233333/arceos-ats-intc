@@ -6,6 +6,7 @@ use axconfig::SMP;
 use axhal::cpu::this_cpu_id;
 use alloc::vec;
 use alloc::vec::Vec;
+use spinlock::SpinNoIrq;
 
 use crate::ats::{Ats, ATS_DRIVER, ATS_EXECUTORS, CURRENT_TASKS};
 // pub(crate) use crate::run_queue::{AxRunQueue, RUN_QUEUE};
@@ -66,15 +67,12 @@ use core::future::Future;
 
 /// Init the scheduler/executor.
 pub fn init() {
-    ATS_DRIVER.init_by(AtsIntc::new(0xffff_ffc0_0f00_0000));
+    ATS_DRIVER.init_by(Arc::new(SpinNoIrq::new(AtsIntc::new(0xffff_ffc0_0f00_0000))));
     ATS_EXECUTORS.init_by(vec![Ats::new(PROCESS_ID); SMP]);
-    CURRENT_TASKS.init_by(vec![CurrentTask::new(); SMP]);
-    // ATS_EXECUTORS.init_by(Vec::new());
-    // CURRENT_TASKS.init_by(Vec::new());
-    // for i in 0 .. SMP {
-    //     ATS_EXECUTORS.push(Ats::new(PROCESS_ID));
-    //     CURRENT_TASKS.push(CurrentTask::new());
-    // }
+    for i in 0 .. SMP {
+        ATS_EXECUTORS[i].cpu_id.init_by(i);
+    }
+    CURRENT_TASKS.init_by(SpinNoIrq::new(vec![CurrentTask::new(); SMP]));
     #[cfg(feature = "irq")]
     crate::timers::init();
 }
@@ -82,7 +80,10 @@ pub fn init() {
 /// Gets the current task.
 pub fn current() -> Option<AxTaskRef> {
     let cpu_id = this_cpu_id();
-    CURRENT_TASKS[cpu_id].get_clone()
+    {
+        let ct_lock = CURRENT_TASKS.lock();
+        ct_lock[cpu_id].get_clone()
+    }
 }
 
 /// Gets the current task id.
@@ -96,7 +97,11 @@ where
 {
     let task = TaskInner::new(handler, "".into(), axconfig::TASK_STACK_SIZE);
     task.set_priority(0);
-    ATS_DRIVER.intr_push(irq_num, task.into_task_ref());
+    {
+        let driver_lock = ATS_DRIVER.lock();
+        driver_lock.intr_push(irq_num, task.into_task_ref());
+    }
+    
     true
 }
 
@@ -106,7 +111,10 @@ where
 {
     let task = AsyncTaskInner::new(handler, "".into());
     task.set_priority(0);
-    ATS_DRIVER.intr_push(irq_num, task.into_task_ref());
+    {
+        let driver_lock = ATS_DRIVER.lock();
+        driver_lock.intr_push(irq_num, task.into_task_ref());
+    }
     true
 }
 
@@ -151,7 +159,11 @@ where
     let task = TaskInner::new(f, name, stack_size);
     let priority = task.inner.get_priority();
     let task_ref = task.clone().into_task_ref();
-    ATS_DRIVER.ps_push(task_ref, priority);
+    // let leak = Arc::into_raw(task.clone()); // tempoary solution
+    {
+        let driver_lock = ATS_DRIVER.lock();
+        driver_lock.ps_push(task_ref, priority);
+    }
     task
 }
 
@@ -162,7 +174,11 @@ where
     let task = TaskInner::new_init(f, name, stack_size);
     let priority = task.inner.get_priority();
     let task_ref = task.clone().into_task_ref();
-    ATS_DRIVER.ps_push(task_ref, priority);
+    // let leak = Arc::into_raw(task.clone()); // tempoary solution
+    {
+        let driver_lock = ATS_DRIVER.lock();
+        driver_lock.ps_push(task_ref, priority);
+    }
     task
 }
 
@@ -196,7 +212,11 @@ where
     let task = AsyncTaskInner::new(f, name);
     let priority = task.inner.get_priority();
     let task_ref = task.clone().into_task_ref();
-    ATS_DRIVER.ps_push(task_ref, priority);
+    // let leak = Arc::into_raw(task.clone()); // tempoary solution
+    {
+        let driver_lock = ATS_DRIVER.lock();
+        driver_lock.ps_push(task_ref, priority);
+    }
     task
 }
 

@@ -1,6 +1,7 @@
 use axconfig::{SMP, TASK_STACK_SIZE};
 use axhal::mem::{virt_to_phys, VirtAddr};
 use core::sync::atomic::{AtomicUsize, Ordering};
+use core::hint::spin_loop;
 
 #[link_section = ".bss.stack"]
 static mut SECONDARY_BOOT_STACK: [[u8; TASK_STACK_SIZE]; SMP - 1] = [[0; TASK_STACK_SIZE]; SMP - 1];
@@ -57,7 +58,12 @@ pub extern "C" fn rust_main_secondary(cpu_id: usize) -> ! {
 
     #[cfg(feature = "multitask")]
     {
-        info!("multitask start run executor");
+        error!("sub core: ready to run executor");
+        // if(cpu_id != 1) {
+        //     loop {
+        //         spin_loop();
+        //     }
+        // }
         axtask::run_executor(cpu_id);
     }
     #[cfg(not(feature = "multitask"))]

@@ -8,9 +8,8 @@ authors = ["Yuekai Jia <equation618@gmail.com>"]
 
 [features]
 
-axstd = ["dep:axstd"]
-
 default = ["axstd"]
+axstd = ["dep:axstd"]
 
 [dependencies]
 rand = { version = "0.8", default-features = false, features = ["small_rng"] }

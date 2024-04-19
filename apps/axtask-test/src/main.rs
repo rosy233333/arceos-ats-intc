@@ -16,7 +16,7 @@ use axstd::thread;
 
 #[no_mangle]
 fn main() {
-    println!("0.1");
+    // println!("0.1");
     // thread::spawn(|| {
     //     println!("1.1");
     //     thread::yield_now();
@@ -24,46 +24,59 @@ fn main() {
     //     thread::yield_now();
     //     println!("1.3");
     // });
-    thread::spawn(|| {
-        println!("1.1");
-        thread::sleep(Duration::from_secs(1));
-        println!("1.2");
-        thread::sleep(Duration::from_secs(1));
-        println!("1.3");
-    });
-    thread::spawn(|| {
-        println!("2.1");
-        thread::yield_now();
-        println!("2.2");
-        thread::yield_now();
-        println!("2.3");
-    });
-    thread::spawn(|| {
-        println!("3.1");
-        thread::yield_now();
-        println!("3.2");
-        thread::yield_now();
-        println!("3.3");
-    });
-    thread::spawn_async(async {
-        println!("4.1");
-        AsyncTest::new("4.2").await;
-        AsyncTest::new("4.3").await;
-        0
-    });
-    thread::spawn_async(async {
-        println!("5.1");
-        AsyncTest::new("5.2").await;
-        AsyncTest::new("5.3").await;
-        0
-    });
-    thread::spawn_async(async {
-        println!("6.1");
-        AsyncTest::new("6.2").await;
-        AsyncTest::new("6.3").await;
-        0
-    });
-    println!("0.2");
+    // // thread::spawn(|| {
+    // //     println!("1.1");
+    // //     thread::sleep(Duration::from_secs(1));
+    // //     println!("1.2");
+    // //     thread::sleep(Duration::from_secs(1));
+    // //     println!("1.3");
+    // // });
+    // thread::spawn(|| {
+    //     println!("2.1");
+    //     thread::yield_now();
+    //     println!("2.2");
+    //     thread::yield_now();
+    //     println!("2.3");
+    // });
+    // thread::spawn(|| {
+    //     println!("3.1");
+    //     thread::yield_now();
+    //     println!("3.2");
+    //     thread::yield_now();
+    //     println!("3.3");
+    // });
+    // thread::spawn_async(async {
+    //     println!("4.1");
+    //     AsyncTest::new("4.2").await;
+    //     AsyncTest::new("4.3").await;
+    //     0
+    // });
+    // thread::spawn_async(async {
+    //     println!("5.1");
+    //     AsyncTest::new("5.2").await;
+    //     AsyncTest::new("5.3").await;
+    //     0
+    // });
+    // thread::spawn_async(async {
+    //     println!("6.1");
+    //     AsyncTest::new("6.2").await;
+    //     AsyncTest::new("6.3").await;
+    //     0
+    // });
+    // println!("0.2");
+    for i in 0 .. 0 {
+        let temp = i;
+        // thread::spawn(|| {
+        //     // println!("thread {} successfully spawned.", temp);
+        //     println!("thread successfully spawned.");
+        //     0
+        // });
+        thread::spawn_async(async {
+            // println!("future successfully spawned.");
+            0
+        })
+    }
+    println!("main function finished");
 }
 
 struct AsyncTest {

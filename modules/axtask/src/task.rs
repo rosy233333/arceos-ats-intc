@@ -26,7 +26,7 @@ use crate::ats::{EXITED_TASKS, WAIT_FOR_EXIT};
 use crate::{AxTaskRef, WaitQueue};
 use crate::ats::ATS_DRIVER;
 
-pub trait AbsTaskInner: UnpinFuture<Output = i32> + TaskInfo + Send + Sync { }
+pub trait AbsTaskInner: UnpinFuture<Output = i32> + Downcast + TaskInfo + Send + Sync { }
 impl AbsTaskInner for TaskInner { }
 impl AbsTaskInner for AsyncTaskInner { }
 
@@ -39,7 +39,10 @@ impl Wake for AxTask {
         self.inner.set_state(TaskState::Ready);
         let priority = self.inner.get_priority();
         let task_ref = self.into_task_ref();
-        ATS_DRIVER.ps_push(task_ref, priority);
+        {
+            let driver_lock = ATS_DRIVER.lock();
+            driver_lock.ps_push(task_ref, priority);
+        }
     }
 }
 
@@ -138,36 +141,14 @@ impl AxTask {
 
         let priority = self.get_priority();
         let task_ref = self.clone().into_task_ref();
-        ATS_DRIVER.ps_push(task_ref, priority);
+        {
+            let driver_lock = ATS_DRIVER.lock();
+            driver_lock.ps_push(task_ref, priority);
+        }
 
+        let inner = self.inner.to_task_inner().unwrap();
         unsafe {
-            
-            // self.ctx_mut_ptr().as_mut().unwrap().context_store();
-            
-            // let ra = self.executor_ra.load(Ordering::Relaxed);
-            // let sp = self.executor_sp.load(Ordering::Relaxed);
-            // asm! {
-            //     "
-            //         MV      ra, t0
-            //         MV      sp, t1
-            //         // return Poll::Pending to Executor
-            //         LI      a0, 1
-            //         RET
-            //     ",
-            //     in("t0") ra,
-            //     in("t1") sp,
-            // }
-
-            // self.ret_ctx_mut_ptr().as_mut().unwrap().context_load();
-            // asm! {
-            //     "
-            //         // return Poll::Pending to Executor
-            //         LI      a0, 1
-            //         RET
-            //     ",
-
-            // }
-            let inner = &*(self.inner.as_ref() as *const dyn AbsTaskInner as *const () as *const TaskInner);
+            // let inner = &*(self.inner.as_ref() as *const dyn AbsTaskInner as *const () as *const TaskInner);
             let old_ctx = inner.ctx_mut_ptr().as_mut().unwrap();
             let new_ctx = inner.ret_ctx_mut_ptr().as_ref().unwrap();
             old_ctx.switch_to_return_pending(new_ctx);
@@ -176,10 +157,12 @@ impl AxTask {
 
     pub fn join_sync(&self) -> Option<i32> {
         assert!(!self.is_async());
-        unsafe {
-            let inner = &*(self.inner.as_ref() as *const dyn AbsTaskInner as *const () as *const TaskInner);
-            inner.join()
-        }
+        // unsafe {
+        //     let inner = &*(self.inner.as_ref() as *const dyn AbsTaskInner as *const () as *const TaskInner);
+        //     inner.join()
+        // }
+        let inner = self.inner.to_task_inner().unwrap();
+        inner.join()
     }
 
     /// This function should be called after this task is added into a block queue. Otherwise, task won't wake.
@@ -189,8 +172,9 @@ impl AxTask {
 
         self.set_state(TaskState::Blocked);
 
+        let inner = self.inner.to_task_inner().unwrap();
         unsafe {
-            let inner = &*(self.inner.as_ref() as *const dyn AbsTaskInner as *const () as *const TaskInner);
+            // let inner = &*(self.inner.as_ref() as *const dyn AbsTaskInner as *const () as *const TaskInner);
             let old_ctx = inner.ctx_mut_ptr().as_mut().unwrap();
             let new_ctx = inner.ret_ctx_mut_ptr().as_ref().unwrap();
             old_ctx.switch_to_return_pending(new_ctx);
@@ -205,8 +189,9 @@ impl AxTask {
         if now < deadline {
             crate::timers::set_alarm_wakeup(deadline, self.clone());
             self.set_state(TaskState::Blocked);
+            let inner = self.inner.to_task_inner().unwrap();
             unsafe {
-                let inner = &*(self.inner.as_ref() as *const dyn AbsTaskInner as *const () as *const TaskInner);
+                // let inner = &*(self.inner.as_ref() as *const dyn AbsTaskInner as *const () as *const TaskInner);
                 let old_ctx = inner.ctx_mut_ptr().as_mut().unwrap();
                 let new_ctx = inner.ret_ctx_mut_ptr().as_ref().unwrap();
                 old_ctx.switch_to_return_pending(new_ctx);
@@ -248,7 +233,8 @@ impl AxTask {
         //     EXITED_TASKS.lock().clear();
         //     axhal::misc::terminate();
         // } else {
-            let inner = unsafe { &*(self.inner.as_ref() as *const dyn AbsTaskInner as *const () as *const TaskInner) };
+            // let inner = unsafe { &*(self.inner.as_ref() as *const dyn AbsTaskInner as *const () as *const TaskInner) };
+            let inner = self.inner.to_task_inner().unwrap();
             self.set_state(TaskState::Exited);
             inner.exit_code.store(exit_code, Ordering::Release);
             inner.wait_for_exit.notify_all_locked(false);
@@ -256,31 +242,6 @@ impl AxTask {
             WAIT_FOR_EXIT.notify_one_locked(false);
             
             unsafe {
-                // let ra = inner.executor_ra.load(Ordering::Relaxed);
-                // let sp = inner.executor_sp.load(Ordering::Relaxed);
-                // asm! {
-                //     "
-                //         MV      ra, t0
-                //         MV      sp, t1
-                //         // return Poll::Ready(exit_code) to Executor
-                //         LI      a0, 0
-                //         MV      a1, t2
-                //         RET
-                //     ",
-                //     in("t0") ra,
-                //     in("t1") sp,
-                //     in("t2") exit_code,
-                // }
-                // inner.ctx_mut_ptr().as_mut().unwrap().context_load();
-                // asm !{
-                //     "
-                //         // return Poll::Ready(exit_code) to Executor
-                //         LI      a0, 0
-                //         // MV      a1, t2 // exit_code本就存储在a1中？
-                //         RET
-                //     ",
-                //     in("a1") exit_code,
-                // }
                 let old_ctx = inner.ctx_mut_ptr().as_mut().unwrap();
                 let new_ctx = inner.ret_ctx_mut_ptr().as_ref().unwrap();
                 old_ctx.switch_to_return_ready(new_ctx, exit_code);
@@ -386,118 +347,61 @@ impl UnpinFuture for TaskInner {
     type Output = i32;
     
     fn poll(&self, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        // let mut ra: usize = 0;
-        // let mut sp: usize = 0;
-        // unsafe {
-        //     asm! {
-        //         "
-        //             MV      t0, ra
-        //             MV      t1, sp
-        //         ",
-        //         out("t0") ra,
-        //         out("t1") sp,
-        //     };
-        // }
-        // self.executor_ra.store(ra, Ordering::Relaxed);
-        // self.executor_sp.store(sp, Ordering::Relaxed);
         info!("into poll");
         self.set_state(TaskState::Running);
         unsafe {
             let old_ctx = self.ret_ctx_mut_ptr().as_mut().unwrap();
             let new_ctx = self.ctx_mut_ptr().as_ref().unwrap();
             old_ctx.switch_to_receive_exit_value(new_ctx)
-            // self.ret_ctx_mut_ptr().as_mut().unwrap().context_store();
-            // self.ctx_mut_ptr().as_mut().unwrap().context_load();
-            // asm! {
-            //     "RET"
-            // }
         }
     }
 }
 
-// impl Wake for TaskInner {
-//     fn wake(self: Arc<Self>) {
-//         self.set_state(TaskState::Ready);
-//         let task_ref = self.as_ref() as *const TaskInner as usize;
-//         ATS_DRIVER.stask(task_ref, PROCESS_ID, self.get_priority());
-//     }
-// }
+pub trait Downcast {
+    fn to_task_inner(&self) -> Option<&TaskInner>;
 
-// related to async
-// impl TaskInner {
-//     pub fn yield_self(&self) {
-//         assert!(self.is_running());
-//         self.set_state(TaskState::Ready);
+    fn to_task_inner_mut(&mut self) -> Option<&mut TaskInner>;
 
-//         // TODO: Call Waker
+    fn to_async_task_inner(&self) -> Option<&AsyncTaskInner>;
 
-//         unsafe {
-//             // self.ctx_mut_ptr().as_mut().unwrap().context_store();
-            
-//             // let ra = self.executor_ra.load(Ordering::Relaxed);
-//             // let sp = self.executor_sp.load(Ordering::Relaxed);
-//             // asm! {
-//             //     "
-//             //         MV      ra, t0
-//             //         MV      sp, t1
-//             //         // return Poll::Pending to Executor
-//             //         LI      a0, 1
-//             //         RET
-//             //     ",
-//             //     in("t0") ra,
-//             //     in("t1") sp,
-//             // }
+    fn to_async_task_inner_mut(&mut self) -> Option<&mut AsyncTaskInner>;
+}
 
-//             // self.ret_ctx_mut_ptr().as_mut().unwrap().context_load();
-//             // asm! {
-//             //     "
-//             //         // return Poll::Pending to Executor
-//             //         LI      a0, 1
-//             //         RET
-//             //     ",
+impl Downcast for TaskInner {
+    fn to_task_inner(&self) -> Option<&TaskInner> {
+        Some(self)
+    }
 
-//             // }
-//             let old_ctx = self.ctx_mut_ptr().as_mut().unwrap();
-//             let new_ctx = self.ret_ctx_mut_ptr().as_ref().unwrap();
-//             old_ctx.switch_to_return_pending(new_ctx);
-//         }
-//     }
+    fn to_task_inner_mut(&mut self) -> Option<&mut TaskInner> {
+        Some(self)
+    }
 
-    // pub fn exit(&self, exit_code: i32) -> ! {
-    //     assert!(self.is_running());
-    //     assert!(!self.is_idle());
-    //     if self.is_init() {
-    //         EXITED_TASKS.lock().clear();
-    //         axhal::misc::terminate();
-    //     } else {
-    //         self.set_state(TaskState::Exited);
-    //         self.exit_code.store(exit_code, Ordering::Release);
-    //         self.wait_for_exit.notify_all_locked(false);
-    //         EXITED_TASKS.lock().push_back(unsafe { Arc::from_raw(self as *const Self) });
-    //         WAIT_FOR_EXIT.notify_one_locked(false);
-            
-    //         unsafe {
-    //             let ra = self.executor_ra.load(Ordering::Relaxed);
-    //             let sp = self.executor_sp.load(Ordering::Relaxed);
-    //             asm! {
-    //                 "
-    //                     MV      ra, t0
-    //                     MV      sp, t1
-    //                     // return Poll::Ready(exit_code) to Executor
-    //                     LI      a0, 0
-    //                     MV      a1, t2
-    //                     RET
-    //                 ",
-    //                 in("t0") ra,
-    //                 in("t1") sp,
-    //                 in("t2") exit_code,
-    //             }
-    //         }
+    fn to_async_task_inner(&self) -> Option<&AsyncTaskInner> {
+        None
+    }
 
-    //         unreachable!();
-    //     }
-    // }
-// }
+    fn to_async_task_inner_mut(&mut self) -> Option<&mut AsyncTaskInner> {
+        None
+    }
+}
+
+impl Downcast for AsyncTaskInner {
+    fn to_task_inner(&self) -> Option<&TaskInner> {
+        None
+    }
+
+    fn to_task_inner_mut(&mut self) -> Option<&mut TaskInner> {
+        None
+    }
+
+    fn to_async_task_inner(&self) -> Option<&AsyncTaskInner> {
+        Some(self)
+    }
+
+    fn to_async_task_inner_mut(&mut self) -> Option<&mut AsyncTaskInner> {
+        Some(self)
+    }
+}
 
 pub trait TaskInfo {
     /// Gets the ID of the task.
@@ -851,14 +755,6 @@ impl UnpinFuture for AsyncTaskInner {
     }
 }
 
-// impl Wake for AsyncTaskInner {
-//     fn wake(self: Arc<Self>) {
-//         self.set_state(TaskState::Ready);
-//         let task_ref = self.as_ref() as *const AsyncTaskInner as usize;
-//         ATS_DRIVER.stask(task_ref, PROCESS_ID, self.get_priority());
-//     }
-// }
-
 impl TaskInfo for AsyncTaskInner {
     /// Gets the ID of the task.
     fn id(&self) -> TaskId {
@@ -1080,7 +976,8 @@ extern "C" fn task_entry() -> ! {
     axhal::arch::enable_irqs();
     let task = crate::current().unwrap();
     assert!(!task.is_async());
-    let task_inner = unsafe { &*(task.inner.as_ref() as *const dyn AbsTaskInner as *const () as *const TaskInner) };
+    // let task_inner = unsafe { &*(task.inner.as_ref() as *const dyn AbsTaskInner as *const () as *const TaskInner) };
+    let task_inner = task.inner.to_task_inner().unwrap();
     if let Some(entry) = task_inner.entry {
         unsafe { Box::from_raw(entry)() };
     }

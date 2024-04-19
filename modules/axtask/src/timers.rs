@@ -19,7 +19,10 @@ impl TimerEvent for TaskWakeupEvent {
         self.0.set_in_timer_list(false);
         let priority = self.0.get_priority();
         let task_ref = self.0.into_task_ref();
-        ATS_DRIVER.ps_push(task_ref, priority);
+        {
+            let driver_lock = ATS_DRIVER.lock();
+            driver_lock.ps_push(task_ref, priority);
+        }
         // rq.unblock_task(self.0, true);
     }
 }

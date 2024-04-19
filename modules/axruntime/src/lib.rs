@@ -62,7 +62,8 @@ impl axlog::LogIf for LogIfImpl {
     fn current_cpu_id() -> Option<usize> {
         #[cfg(feature = "smp")]
         if is_init_ok() {
-            Some(axhal::cpu::this_cpu_id())
+            // Some(axhal::cpu::this_cpu_id())
+            None
         } else {
             None
         }
@@ -74,7 +75,8 @@ impl axlog::LogIf for LogIfImpl {
         if is_init_ok() {
             #[cfg(feature = "multitask")]
             {
-                axtask::current_id()
+                // axtask::current_id()
+                None
             }
             #[cfg(not(feature = "multitask"))]
             None
@@ -84,7 +86,7 @@ impl axlog::LogIf for LogIfImpl {
     }
 }
 
-use core::sync::atomic::{AtomicUsize, Ordering};
+use core::{hint::spin_loop, sync::atomic::{AtomicUsize, Ordering}};
 
 static INITED_CPUS: AtomicUsize = AtomicUsize::new(0);
 
@@ -150,7 +152,22 @@ pub extern "C" fn rust_main(cpu_id: usize, dtb: usize) -> ! {
     axhal::platform_init();
 
     #[cfg(feature = "multitask")]
-    axtask::init();
+    {
+        axtask::init();
+        error!("multitask start spawn main");
+        axtask::spawn_init(|| { 
+            unsafe{ 
+                main();
+                // axhal::misc::terminate();
+            } 
+        });
+        for i in 0 .. 16 {
+            axtask::spawn_async(async { 
+                0
+            });
+        }
+        error!("multitask spawn main complete");
+    }
 
     #[cfg(any(feature = "fs", feature = "net", feature = "display"))]
     {
@@ -191,14 +208,12 @@ pub extern "C" fn rust_main(cpu_id: usize, dtb: usize) -> ! {
 
     #[cfg(feature = "multitask")]
     {
-        info!("multitask start spawn main");
-        axtask::spawn_init(|| { 
-            unsafe{ 
-                main();
-                // axhal::misc::terminate();
-            } 
-        });
-        info!("multitask start run executor");
+        error!("main core: ready to run executor");
+        // if(cpu_id != 1) {
+        //     loop {
+        //         spin_loop();
+        //     }
+        // }
         axtask::run_executor(cpu_id);
     }
     

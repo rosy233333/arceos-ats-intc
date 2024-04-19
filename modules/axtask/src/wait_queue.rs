@@ -196,7 +196,10 @@ impl WaitQueue {
                 task.set_state(TaskState::Ready);
                 let priority = task.inner.get_priority();
                 let task_ref = task.into_task_ref();
-                ATS_DRIVER.ps_push(task_ref, priority);
+                {
+                    let driver_lock = ATS_DRIVER.lock();
+                    driver_lock.ps_push(task_ref, priority);
+                }
             } else {
                 break;
             }
@@ -216,7 +219,10 @@ impl WaitQueue {
             // rq.unblock_task(wq.remove(index).unwrap(), resched);
             task.set_state(TaskState::Ready);
             let task_ref = task.clone().into_task_ref();
-            ATS_DRIVER.ps_push(task_ref, task.get_priority());
+            {
+                let driver_lock = ATS_DRIVER.lock();
+                driver_lock.ps_push(task_ref, task.get_priority());
+            }
             true
         } else {
             false
@@ -230,7 +236,10 @@ impl WaitQueue {
             task.set_state(TaskState::Ready);
             let priority = task.inner.get_priority();
             let task_ref = task.into_task_ref();
-            ATS_DRIVER.ps_push(task_ref, priority);
+            {
+                let driver_lock = ATS_DRIVER.lock();
+                driver_lock.ps_push(task_ref, priority);
+            }
             true
         } else {
             false
@@ -244,7 +253,10 @@ impl WaitQueue {
             task.set_state(TaskState::Ready);
             let priority = task.inner.get_priority();
             let task_ref = task.into_task_ref();
-            ATS_DRIVER.ps_push(task_ref, priority);
+            {
+                let driver_lock = ATS_DRIVER.lock();
+                driver_lock.ps_push(task_ref, priority);
+            }
         }
     }
 }
