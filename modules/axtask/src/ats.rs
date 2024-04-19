@@ -14,8 +14,10 @@ pub(crate) static ATS_DRIVER: LazyInit<Arc<SpinNoIrq<AtsIntc>>> = LazyInit::new(
 pub(crate) const PROCESS_ID: usize = 0;
 
 // scheduler and executor
-pub(crate) static ATS_EXECUTORS: LazyInit<Vec<Ats>> = LazyInit::new();
-pub(crate) static CURRENT_TASKS: LazyInit<SpinNoIrq<Vec<CurrentTask>>> = LazyInit::new();
+#[percpu::def_percpu]
+pub(crate) static ATS_EXECUTORS: LazyInit<Ats> = LazyInit::new();
+#[percpu::def_percpu]
+pub(crate) static CURRENT_TASKS: LazyInit<CurrentTask> = LazyInit::new();
 
 // TODO: per-CPU
 pub(crate) static EXITED_TASKS: SpinNoIrq<VecDeque<AxTaskRef>> = SpinNoIrq::new(VecDeque::new());
@@ -25,7 +27,7 @@ pub(crate) static WAIT_FOR_EXIT: WaitQueue = WaitQueue::new();
 pub struct Ats {
     process_id: usize,
     stack: TaskStack,
-    pub cpu_id: LazyInit<usize>,
+    pub cpu_id: usize,
     ctx: UnsafeCell<TaskContext>,
 }
 
@@ -37,14 +39,14 @@ impl Ats {
         Self {
             process_id,
             stack: TaskStack::alloc(align_up_4k(axconfig::TASK_STACK_SIZE)),
-            cpu_id: LazyInit::new(), // uninitialized
+            cpu_id: this_cpu_id(), // uninitialized
             ctx: UnsafeCell::new(TaskContext::new()),
         }
     }
 
     pub(crate) fn run(&self) -> ! {
         loop {
-            let cpu_id: usize = *self.cpu_id;
+            let cpu_id: usize = self.cpu_id;
             let current_cpu_id = this_cpu_id();
             assert!(current_cpu_id == cpu_id);
             // info!("  into Ats::run");
@@ -57,17 +59,19 @@ impl Ats {
             info!("  after ftask");
             match ats_task {
                 Some(task_ref) => {
-                        // error!("  ftask: Some");
-                        let task: Arc<AxTask> = unsafe { AxTask::from_task_ref(task_ref) };
-                        // error!("  fetch task: {}.", task.id_name());
+                        // // error!("  ftask: Some");
+                        // let task: Arc<AxTask> = unsafe { AxTask::from_task_ref(task_ref) };
+                        // // error!("  fetch task: {}.", task.id_name());
                         // unsafe {
-                        //     let ct_lock = CURRENT_TASKS.lock();
-                        //     ct_lock[cpu_id].set_current(Some(task.clone()));
+                        //     // let ct_lock = CURRENT_TASKS.lock();
+                        //     // ct_lock[cpu_id].set_current(Some(task.clone()));
+                        //     CURRENT_TASKS.current_ref_raw().set_current(Some(task.clone()));
                         // }
                         // let poll_result = task.poll(&mut Context::from_waker(&Waker::from(task.clone())));
                         // unsafe {
-                        //     let ct_lock = CURRENT_TASKS.lock();
-                        //     ct_lock[cpu_id].set_current(None);
+                        //     // let ct_lock = CURRENT_TASKS.lock();
+                        //     // ct_lock[cpu_id].set_current(None);
+                        //     CURRENT_TASKS.current_ref_raw().set_current(None);
                         // }
                         // match poll_result { 
                         //     Poll::Ready(value) => {

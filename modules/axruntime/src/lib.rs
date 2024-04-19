@@ -29,6 +29,8 @@ mod trap;
 #[cfg(feature = "smp")]
 mod mp;
 
+use axconfig::SMP;
+
 #[cfg(feature = "smp")]
 pub use self::mp::rust_main_secondary;
 
@@ -153,6 +155,8 @@ pub extern "C" fn rust_main(cpu_id: usize, dtb: usize) -> ! {
 
     #[cfg(feature = "multitask")]
     {
+        percpu::init(SMP);
+        percpu::set_local_thread_pointer(cpu_id);
         axtask::init();
         error!("multitask start spawn main");
         axtask::spawn_init(|| { 
@@ -214,7 +218,7 @@ pub extern "C" fn rust_main(cpu_id: usize, dtb: usize) -> ! {
         //         spin_loop();
         //     }
         // }
-        axtask::run_executor(cpu_id);
+        axtask::run_executor();
     }
     
     #[cfg(not(feature = "multitask"))]

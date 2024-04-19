@@ -68,21 +68,36 @@ use core::future::Future;
 /// Init the scheduler/executor.
 pub fn init() {
     ATS_DRIVER.init_by(Arc::new(SpinNoIrq::new(AtsIntc::new(0xffff_ffc0_0f00_0000))));
-    ATS_EXECUTORS.init_by(vec![Ats::new(PROCESS_ID); SMP]);
-    for i in 0 .. SMP {
-        ATS_EXECUTORS[i].cpu_id.init_by(i);
+    // ATS_EXECUTORS.init_by(vec![Ats::new(PROCESS_ID); SMP]);
+    // for i in 0 .. SMP {
+    //     ATS_EXECUTORS[i].cpu_id.init_by(i);
+    // }
+    // CURRENT_TASKS.init_by(SpinNoIrq::new(vec![CurrentTask::new(); SMP]));
+    unsafe {
+        ATS_EXECUTORS.current_ref_raw().init_by(Ats::new(PROCESS_ID));
+        CURRENT_TASKS.current_ref_raw().init_by(CurrentTask::new());
     }
-    CURRENT_TASKS.init_by(SpinNoIrq::new(vec![CurrentTask::new(); SMP]));
+    
     #[cfg(feature = "irq")]
     crate::timers::init();
+}
+
+pub fn init_secondary() {
+    unsafe {
+        ATS_EXECUTORS.current_ref_raw().init_by(Ats::new(PROCESS_ID));
+        CURRENT_TASKS.current_ref_raw().init_by(CurrentTask::new());
+    }
 }
 
 /// Gets the current task.
 pub fn current() -> Option<AxTaskRef> {
     let cpu_id = this_cpu_id();
-    {
-        let ct_lock = CURRENT_TASKS.lock();
-        ct_lock[cpu_id].get_clone()
+    // {
+    //     let ct_lock = CURRENT_TASKS.lock();
+    //     ct_lock[cpu_id].get_clone()
+    // }
+    unsafe {
+        CURRENT_TASKS.current_ref_raw().get_clone()
     }
 }
 
@@ -135,8 +150,10 @@ where
 // }
 
 /// Run the task executor
-pub fn run_executor(cpu_id: usize) -> ! {
-    ATS_EXECUTORS[cpu_id].run()
+pub fn run_executor() -> ! {
+    unsafe {
+        ATS_EXECUTORS.current_ref_raw().run()
+    }
 }
 
 /// Handles periodic timer ticks for the task manager.

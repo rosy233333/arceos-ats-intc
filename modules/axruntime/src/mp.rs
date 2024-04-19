@@ -40,8 +40,11 @@ pub extern "C" fn rust_main_secondary(cpu_id: usize) -> ! {
 
     axhal::platform_init_secondary();
 
-    // #[cfg(feature = "multitask")]
-    // axtask::init_scheduler_secondary();
+    #[cfg(feature = "multitask")]
+    {
+        percpu::set_local_thread_pointer(cpu_id);
+        axtask::init_secondary();
+    }
 
     info!("Secondary CPU {:x} init OK.", cpu_id);
     super::INITED_CPUS.fetch_add(1, Ordering::Relaxed);
@@ -64,7 +67,7 @@ pub extern "C" fn rust_main_secondary(cpu_id: usize) -> ! {
         //         spin_loop();
         //     }
         // }
-        axtask::run_executor(cpu_id);
+        axtask::run_executor();
     }
     #[cfg(not(feature = "multitask"))]
     loop {
