@@ -64,7 +64,9 @@ fn main() {
     //     0
     // });
     // println!("0.2");
-    for i in 0 .. 0 {
+    thread::sleep(Duration::from_secs(1));
+    
+    for i in 0 .. 16 {
         let temp = i;
         // thread::spawn(|| {
         //     // println!("thread {} successfully spawned.", temp);
@@ -74,7 +76,7 @@ fn main() {
         thread::spawn_async(async {
             // println!("future successfully spawned.");
             0
-        })
+        });
     }
     println!("main function finished");
 }

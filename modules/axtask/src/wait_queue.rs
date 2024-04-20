@@ -2,7 +2,7 @@ use alloc::collections::VecDeque;
 use alloc::sync::Arc;
 use spinlock::SpinRaw;
 
-use crate::{ats::{ATS_DRIVER, PROCESS_ID}, current, task::{AbsTaskInner, AxTask, TaskState}, AxTaskRef, CurrentTask};
+use crate::{ats::{ATS_DRIVER, DRIVER_LOCK, PROCESS_ID}, current, task::{AbsTaskInner, AxTask, TaskState}, AxTaskRef, CurrentTask};
 
 /// A queue to store sleeping tasks.
 ///
@@ -196,9 +196,10 @@ impl WaitQueue {
                 task.set_state(TaskState::Ready);
                 let priority = task.inner.get_priority();
                 let task_ref = task.into_task_ref();
-                {
-                    let driver_lock = ATS_DRIVER.lock();
-                    driver_lock.ps_push(task_ref, priority);
+                unsafe {
+                    // let lock = DRIVER_LOCK.lock();
+                    let driver = ATS_DRIVER.current_ref_raw();
+                    driver.ps_push(task_ref, priority);
                 }
             } else {
                 break;
@@ -219,9 +220,10 @@ impl WaitQueue {
             // rq.unblock_task(wq.remove(index).unwrap(), resched);
             task.set_state(TaskState::Ready);
             let task_ref = task.clone().into_task_ref();
-            {
-                let driver_lock = ATS_DRIVER.lock();
-                driver_lock.ps_push(task_ref, task.get_priority());
+            unsafe {
+                // let lock = DRIVER_LOCK.lock();
+                let driver = ATS_DRIVER.current_ref_raw();
+                driver.ps_push(task_ref, task.get_priority());
             }
             true
         } else {
@@ -236,9 +238,10 @@ impl WaitQueue {
             task.set_state(TaskState::Ready);
             let priority = task.inner.get_priority();
             let task_ref = task.into_task_ref();
-            {
-                let driver_lock = ATS_DRIVER.lock();
-                driver_lock.ps_push(task_ref, priority);
+            unsafe {
+                // let lock = DRIVER_LOCK.lock();
+                let driver = ATS_DRIVER.current_ref_raw();
+                driver.ps_push(task_ref, priority);
             }
             true
         } else {
@@ -253,9 +256,10 @@ impl WaitQueue {
             task.set_state(TaskState::Ready);
             let priority = task.inner.get_priority();
             let task_ref = task.into_task_ref();
-            {
-                let driver_lock = ATS_DRIVER.lock();
-                driver_lock.ps_push(task_ref, priority);
+            unsafe {
+                // let lock = DRIVER_LOCK.lock();
+                let driver = ATS_DRIVER.current_ref_raw();
+                driver.ps_push(task_ref, priority);
             }
         }
     }

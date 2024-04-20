@@ -8,7 +8,7 @@ use alloc::vec;
 use alloc::vec::Vec;
 use spinlock::SpinNoIrq;
 
-use crate::ats::{Ats, ATS_DRIVER, ATS_EXECUTORS, CURRENT_TASKS};
+use crate::ats::{Ats, ATS_DRIVER, ATS_EXECUTORS, CURRENT_TASKS, DRIVER_LOCK};
 // pub(crate) use crate::run_queue::{AxRunQueue, RUN_QUEUE};
 
 use crate::task::{AbsTaskInner, AsyncTaskInner, AxTask};
@@ -67,13 +67,13 @@ use core::future::Future;
 
 /// Init the scheduler/executor.
 pub fn init() {
-    ATS_DRIVER.init_by(Arc::new(SpinNoIrq::new(AtsIntc::new(0xffff_ffc0_0f00_0000))));
     // ATS_EXECUTORS.init_by(vec![Ats::new(PROCESS_ID); SMP]);
     // for i in 0 .. SMP {
     //     ATS_EXECUTORS[i].cpu_id.init_by(i);
     // }
     // CURRENT_TASKS.init_by(SpinNoIrq::new(vec![CurrentTask::new(); SMP]));
     unsafe {
+        ATS_DRIVER.current_ref_raw().init_by(AtsIntc::new(0xffff_ffc0_0f00_0000));
         ATS_EXECUTORS.current_ref_raw().init_by(Ats::new(PROCESS_ID));
         CURRENT_TASKS.current_ref_raw().init_by(CurrentTask::new());
     }
@@ -84,6 +84,7 @@ pub fn init() {
 
 pub fn init_secondary() {
     unsafe {
+        ATS_DRIVER.current_ref_raw().init_by(AtsIntc::new(0xffff_ffc0_0f00_0000));
         ATS_EXECUTORS.current_ref_raw().init_by(Ats::new(PROCESS_ID));
         CURRENT_TASKS.current_ref_raw().init_by(CurrentTask::new());
     }
@@ -112,9 +113,10 @@ where
 {
     let task = TaskInner::new(handler, "".into(), axconfig::TASK_STACK_SIZE);
     task.set_priority(0);
-    {
-        let driver_lock = ATS_DRIVER.lock();
-        driver_lock.intr_push(irq_num, task.into_task_ref());
+    unsafe {
+        // let lock = DRIVER_LOCK.lock();
+        let driver = ATS_DRIVER.current_ref_raw();
+        driver.intr_push(irq_num, task.into_task_ref());
     }
     
     true
@@ -126,9 +128,10 @@ where
 {
     let task = AsyncTaskInner::new(handler, "".into());
     task.set_priority(0);
-    {
-        let driver_lock = ATS_DRIVER.lock();
-        driver_lock.intr_push(irq_num, task.into_task_ref());
+    unsafe {
+        // let lock = DRIVER_LOCK.lock();
+        let driver = ATS_DRIVER.current_ref_raw();
+        driver.intr_push(irq_num, task.into_task_ref());
     }
     true
 }
@@ -177,9 +180,10 @@ where
     let priority = task.inner.get_priority();
     let task_ref = task.clone().into_task_ref();
     // let leak = Arc::into_raw(task.clone()); // tempoary solution
-    {
-        let driver_lock = ATS_DRIVER.lock();
-        driver_lock.ps_push(task_ref, priority);
+    unsafe {
+        // let lock = DRIVER_LOCK.lock();
+        let driver = ATS_DRIVER.current_ref_raw();
+        driver.ps_push(task_ref, priority);
     }
     task
 }
@@ -192,9 +196,10 @@ where
     let priority = task.inner.get_priority();
     let task_ref = task.clone().into_task_ref();
     // let leak = Arc::into_raw(task.clone()); // tempoary solution
-    {
-        let driver_lock = ATS_DRIVER.lock();
-        driver_lock.ps_push(task_ref, priority);
+    unsafe {
+        // let lock = DRIVER_LOCK.lock();
+        let driver = ATS_DRIVER.current_ref_raw();
+        driver.ps_push(task_ref, priority);
     }
     task
 }
@@ -230,9 +235,10 @@ where
     let priority = task.inner.get_priority();
     let task_ref = task.clone().into_task_ref();
     // let leak = Arc::into_raw(task.clone()); // tempoary solution
-    {
-        let driver_lock = ATS_DRIVER.lock();
-        driver_lock.ps_push(task_ref, priority);
+    unsafe {
+        // let lock = DRIVER_LOCK.lock();
+        let driver = ATS_DRIVER.current_ref_raw();
+        driver.ps_push(task_ref, priority);
     }
     task
 }

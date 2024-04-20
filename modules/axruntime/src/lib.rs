@@ -165,11 +165,11 @@ pub extern "C" fn rust_main(cpu_id: usize, dtb: usize) -> ! {
                 // axhal::misc::terminate();
             } 
         });
-        for i in 0 .. 16 {
-            axtask::spawn_async(async { 
-                0
-            });
-        }
+        // for i in 0 .. 16 {
+        //     axtask::spawn_async(async { 
+        //         0
+        //     });
+        // }
         error!("multitask spawn main complete");
     }
 

@@ -3,14 +3,18 @@ use ats_intc::AtsIntc;
 use axhal::{arch::TaskContext, cpu::this_cpu_id};
 use lazy_init::LazyInit;
 use spinlock::SpinNoIrq;
-use crate::{spawn_async, task::{AbsTaskInner, AxTask, TaskStack}, AxTaskRef, CurrentTask, WaitQueue};
+use crate::{spawn_async, task::{AbsTaskInner, AsyncTaskInner, AxTask, TaskStack}, AxTaskRef, CurrentTask, WaitQueue};
 use core::task::{ Context, Waker };
 use alloc::{collections::VecDeque, sync::Arc};
 use core::arch::asm;
 use memory_addr::align_up_4k;
 use alloc::vec::Vec;
 
-pub(crate) static ATS_DRIVER: LazyInit<Arc<SpinNoIrq<AtsIntc>>> = LazyInit::new();
+pub(crate) static DRIVER_LOCK: SpinNoIrq<usize> = SpinNoIrq::new(0);
+
+#[percpu::def_percpu]
+pub(crate) static ATS_DRIVER: LazyInit<AtsIntc> = LazyInit::new();
+
 pub(crate) const PROCESS_ID: usize = 0;
 
 // scheduler and executor
@@ -50,37 +54,37 @@ impl Ats {
             let current_cpu_id = this_cpu_id();
             assert!(current_cpu_id == cpu_id);
             // info!("  into Ats::run");
-            let ats_task = {
-                info!("  before lock");
-                let driver_lock = ATS_DRIVER.lock();
-                info!("  after lock");
-                driver_lock.ps_fetch()
+            let ats_task = unsafe {
+                // let lock = DRIVER_LOCK.lock();
+                let driver = ATS_DRIVER.current_ref_raw();
+                driver.ps_fetch()
+                // Some(AsyncTaskInner::new(async { 0 }, "test".into()).into_task_ref())
             };
             info!("  after ftask");
             match ats_task {
                 Some(task_ref) => {
-                        // // error!("  ftask: Some");
-                        // let task: Arc<AxTask> = unsafe { AxTask::from_task_ref(task_ref) };
-                        // // error!("  fetch task: {}.", task.id_name());
-                        // unsafe {
-                        //     // let ct_lock = CURRENT_TASKS.lock();
-                        //     // ct_lock[cpu_id].set_current(Some(task.clone()));
-                        //     CURRENT_TASKS.current_ref_raw().set_current(Some(task.clone()));
-                        // }
-                        // let poll_result = task.poll(&mut Context::from_waker(&Waker::from(task.clone())));
-                        // unsafe {
-                        //     // let ct_lock = CURRENT_TASKS.lock();
-                        //     // ct_lock[cpu_id].set_current(None);
-                        //     CURRENT_TASKS.current_ref_raw().set_current(None);
-                        // }
-                        // match poll_result { 
-                        //     Poll::Ready(value) => {
-                        //         info!("  task return {}.", value);
-                        //     },
-                        //     Poll::Pending => {
-                        //         info!("  task not finished.");
-                        //     },
-                        // }
+                        // error!("  ftask: Some");
+                        let task: Arc<AxTask> = unsafe { AxTask::from_task_ref(task_ref) };
+                        // error!("  fetch task: {}.", task.id_name());
+                        unsafe {
+                            // let ct_lock = CURRENT_TASKS.lock();
+                            // ct_lock[cpu_id].set_current(Some(task.clone()));
+                            CURRENT_TASKS.current_ref_raw().set_current(Some(task.clone()));
+                        }
+                        let poll_result = task.poll(&mut Context::from_waker(&Waker::from(task.clone())));
+                        unsafe {
+                            // let ct_lock = CURRENT_TASKS.lock();
+                            // ct_lock[cpu_id].set_current(None);
+                            CURRENT_TASKS.current_ref_raw().set_current(None);
+                        }
+                        match poll_result { 
+                            Poll::Ready(value) => {
+                                info!("  task return {}.", value);
+                            },
+                            Poll::Pending => {
+                                info!("  task not finished.");
+                            },
+                        }
                 },
                 None => {
                     // info!("  ftask: None");
