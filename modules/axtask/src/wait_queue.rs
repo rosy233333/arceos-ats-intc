@@ -2,7 +2,7 @@ use alloc::collections::VecDeque;
 use alloc::sync::Arc;
 use spinlock::SpinRaw;
 
-use crate::{ats::{ATS_DRIVER, DRIVER_LOCK, PROCESS_ID}, current, task::{AbsTaskInner, AxTask, TaskState}, AxTaskRef, CurrentTask};
+use crate::{ats::{ATS_DRIVER, DRIVER_LOCK, GLOBAL_ATS_DRIVER, PROCESS_ID}, current, task::{AbsTaskInner, AxTask, TaskState}, AxTaskRef, CurrentTask};
 
 /// A queue to store sleeping tasks.
 ///
@@ -198,7 +198,8 @@ impl WaitQueue {
                 let task_ref = task.into_task_ref();
                 unsafe {
                     // let lock = DRIVER_LOCK.lock();
-                    let driver = ATS_DRIVER.current_ref_raw();
+                    // let driver = ATS_DRIVER.current_ref_raw();
+                    let driver = GLOBAL_ATS_DRIVER.lock();
                     driver.ps_push(task_ref, priority);
                 }
             } else {
@@ -222,7 +223,8 @@ impl WaitQueue {
             let task_ref = task.clone().into_task_ref();
             unsafe {
                 // let lock = DRIVER_LOCK.lock();
-                let driver = ATS_DRIVER.current_ref_raw();
+                // let driver = ATS_DRIVER.current_ref_raw();
+                let driver = GLOBAL_ATS_DRIVER.lock();
                 driver.ps_push(task_ref, task.get_priority());
             }
             true
@@ -240,7 +242,8 @@ impl WaitQueue {
             let task_ref = task.into_task_ref();
             unsafe {
                 // let lock = DRIVER_LOCK.lock();
-                let driver = ATS_DRIVER.current_ref_raw();
+                // let driver = ATS_DRIVER.current_ref_raw();
+                let driver = GLOBAL_ATS_DRIVER.lock();
                 driver.ps_push(task_ref, priority);
             }
             true
@@ -258,7 +261,8 @@ impl WaitQueue {
             let task_ref = task.into_task_ref();
             unsafe {
                 // let lock = DRIVER_LOCK.lock();
-                let driver = ATS_DRIVER.current_ref_raw();
+                // let driver = ATS_DRIVER.current_ref_raw();
+                let driver = GLOBAL_ATS_DRIVER.lock();
                 driver.ps_push(task_ref, priority);
             }
         }

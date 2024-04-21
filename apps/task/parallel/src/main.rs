@@ -74,31 +74,30 @@ fn main() {
     for i in 0..NUM_TASKS {
         let vec = vec.clone();
         tasks.push(thread::spawn(move || {
-            // let left = i * (NUM_DATA / NUM_TASKS);
-            // let right = (left + (NUM_DATA / NUM_TASKS)).min(NUM_DATA);
-            // println!(
-            //     "part {}: {:?} [{}, {})",
-            //     i,
-            //     thread::current().id(),
-            //     left,
-            //     right
-            // );
+            let left = i * (NUM_DATA / NUM_TASKS);
+            let right = (left + (NUM_DATA / NUM_TASKS)).min(NUM_DATA);
+            println!(
+                "part {}: {:?} [{}, {})",
+                i,
+                thread::current().id(),
+                left,
+                right
+            );
 
-            // let partial_sum: u64 = vec[left..right].iter().map(sqrt).sum();
-            // // barrier();
+            let partial_sum: u64 = vec[left..right].iter().map(sqrt).sum();
+            barrier();
 
-            // println!("part {}: {:?} finished", i, thread::current().id());
-            // partial_sum
-            0
+            println!("part {}: {:?} finished", i, thread::current().id());
+            partial_sum
         }));
     }
 
-    // let actual: u64 = tasks.into_iter().map(|t| t.join().unwrap()).sum();
+    let actual: u64 = tasks.into_iter().map(|t| t.join().unwrap()).sum();
     let end_time: std::time::Instant = std::time::Instant::now();
     let used_time = end_time.duration_since(start_time);
     println!("used time = {:?}", used_time);
-    // println!("sum = {}", actual);
-    // assert_eq!(expect, actual);
+    println!("sum = {}", actual);
+    assert_eq!(expect, actual);
 
     println!("Parallel summation tests run OK!");
 }

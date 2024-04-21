@@ -64,8 +64,8 @@ impl axlog::LogIf for LogIfImpl {
     fn current_cpu_id() -> Option<usize> {
         #[cfg(feature = "smp")]
         if is_init_ok() {
-            // Some(axhal::cpu::this_cpu_id())
-            None
+            Some(axhal::cpu::this_cpu_id())
+            // None
         } else {
             None
         }
@@ -77,8 +77,8 @@ impl axlog::LogIf for LogIfImpl {
         if is_init_ok() {
             #[cfg(feature = "multitask")]
             {
-                // axtask::current_id()
-                None
+                axtask::current_id()
+                // None
             }
             #[cfg(not(feature = "multitask"))]
             None

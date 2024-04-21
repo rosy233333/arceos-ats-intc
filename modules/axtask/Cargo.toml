@@ -39,7 +39,8 @@ scheduler = { path = "../../crates/scheduler", optional = true }
 timer_list = { path = "../../crates/timer_list", optional = true }
 kernel_guard = { path = "../../crates/kernel_guard", optional = true }
 crate_interface = { path = "../../crates/crate_interface", optional = true }
-ats-intc = { git = "https://github.com/ATS-INTC/ats-intc", branch = "axu15eg", optional = true }
+# ats-intc = { git = "https://github.com/ATS-INTC/ats-intc", branch = "axu15eg", optional = true }
+ats-intc = { path = "../../../ats-intc", default-features = false, features = ["svd2rust-impl"], optional = true }
 
 [dev-dependencies]
 rand = "0.8"

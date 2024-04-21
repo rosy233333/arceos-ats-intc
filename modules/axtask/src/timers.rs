@@ -6,7 +6,7 @@ use lazy_init::LazyInit;
 use spinlock::SpinNoIrq;
 use timer_list::{TimeValue, TimerEvent, TimerList};
 
-use crate::{ats::{ATS_DRIVER, DRIVER_LOCK}, task::AxTask, AxTaskRef};
+use crate::{ats::{ATS_DRIVER, DRIVER_LOCK, GLOBAL_ATS_DRIVER}, task::AxTask, AxTaskRef};
 
 // TODO: per-CPU
 static TIMER_LIST: LazyInit<SpinNoIrq<TimerList<TaskWakeupEvent>>> = LazyInit::new();
@@ -21,7 +21,8 @@ impl TimerEvent for TaskWakeupEvent {
         let task_ref = self.0.into_task_ref();
         unsafe {
             // let lock = DRIVER_LOCK.lock();
-            let driver = ATS_DRIVER.current_ref_raw();
+            // let driver = ATS_DRIVER.current_ref_raw();
+            let driver = GLOBAL_ATS_DRIVER.lock();
             driver.ps_push(task_ref, priority);
         }
         // rq.unblock_task(self.0, true);

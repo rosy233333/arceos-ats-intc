@@ -12,6 +12,8 @@ use alloc::vec::Vec;
 
 pub(crate) static DRIVER_LOCK: SpinNoIrq<usize> = SpinNoIrq::new(0);
 
+pub(crate) static GLOBAL_ATS_DRIVER: SpinNoIrq<LazyInit<AtsIntc>> = SpinNoIrq::new(LazyInit::new());
+
 #[percpu::def_percpu]
 pub(crate) static ATS_DRIVER: LazyInit<AtsIntc> = LazyInit::new();
 
@@ -53,13 +55,24 @@ impl Ats {
             let cpu_id: usize = self.cpu_id;
             let current_cpu_id = this_cpu_id();
             assert!(current_cpu_id == cpu_id);
-            // info!("  into Ats::run");
+            info!("  into Ats::run");
+
             let ats_task = unsafe {
-                // let lock = DRIVER_LOCK.lock();
-                let driver = ATS_DRIVER.current_ref_raw();
+                let driver = GLOBAL_ATS_DRIVER.lock();
                 driver.ps_fetch()
-                // Some(AsyncTaskInner::new(async { 0 }, "test".into()).into_task_ref())
             };
+            // let _task = unsafe {
+            //     let driver = GLOBAL_ATS_DRIVER.lock();
+            //     // error!("ps_fetch");
+            //     driver.ps_fetch()
+            // };
+            // let ats_task = Some(AsyncTaskInner::new(async {
+            //     spawn_async(async {
+            //         0
+            //     });
+            //     0
+            // }, "test".into()).into_task_ref());
+            
             info!("  after ftask");
             match ats_task {
                 Some(task_ref) => {
