@@ -198,8 +198,8 @@ impl WaitQueue {
                 let task_ref = task.into_task_ref();
                 unsafe {
                     // let lock = DRIVER_LOCK.lock();
-                    // let driver = ATS_DRIVER.current_ref_raw();
-                    let driver = GLOBAL_ATS_DRIVER.lock();
+                    let driver = ATS_DRIVER.current_ref_raw();
+                    // let driver = GLOBAL_ATS_DRIVER.lock();
                     driver.ps_push(task_ref, priority);
                 }
             } else {
@@ -223,8 +223,8 @@ impl WaitQueue {
             let task_ref = task.clone().into_task_ref();
             unsafe {
                 // let lock = DRIVER_LOCK.lock();
-                // let driver = ATS_DRIVER.current_ref_raw();
-                let driver = GLOBAL_ATS_DRIVER.lock();
+                let driver = ATS_DRIVER.current_ref_raw();
+                // let driver = GLOBAL_ATS_DRIVER.lock();
                 driver.ps_push(task_ref, task.get_priority());
             }
             true
@@ -242,8 +242,8 @@ impl WaitQueue {
             let task_ref = task.into_task_ref();
             unsafe {
                 // let lock = DRIVER_LOCK.lock();
-                // let driver = ATS_DRIVER.current_ref_raw();
-                let driver = GLOBAL_ATS_DRIVER.lock();
+                let driver = ATS_DRIVER.current_ref_raw();
+                // let driver = GLOBAL_ATS_DRIVER.lock();
                 driver.ps_push(task_ref, priority);
             }
             true
@@ -261,8 +261,8 @@ impl WaitQueue {
             let task_ref = task.into_task_ref();
             unsafe {
                 // let lock = DRIVER_LOCK.lock();
-                // let driver = ATS_DRIVER.current_ref_raw();
-                let driver = GLOBAL_ATS_DRIVER.lock();
+                let driver = ATS_DRIVER.current_ref_raw();
+                // let driver = GLOBAL_ATS_DRIVER.lock();
                 driver.ps_push(task_ref, priority);
             }
         }

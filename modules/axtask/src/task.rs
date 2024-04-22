@@ -41,8 +41,8 @@ impl Wake for AxTask {
         let task_ref = self.into_task_ref();
         unsafe {
             // let lock = DRIVER_LOCK.lock();
-            // let driver = ATS_DRIVER.current_ref_raw();
-            let driver = GLOBAL_ATS_DRIVER.lock();
+            let driver = ATS_DRIVER.current_ref_raw();
+            // let driver = GLOBAL_ATS_DRIVER.lock();
             driver.ps_push(task_ref, priority);
         }
     }
@@ -145,8 +145,8 @@ impl AxTask {
         let task_ref = self.clone().into_task_ref();
         unsafe {
             // let lock = DRIVER_LOCK.lock();
-            // let driver = ATS_DRIVER.current_ref_raw();
-            let driver = GLOBAL_ATS_DRIVER.lock();
+            let driver = ATS_DRIVER.current_ref_raw();
+            // let driver = GLOBAL_ATS_DRIVER.lock();
             driver.ps_push(task_ref, priority);
         }
 

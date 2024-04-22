@@ -58,7 +58,8 @@ impl Ats {
             info!("  into Ats::run");
 
             let ats_task = unsafe {
-                let driver = GLOBAL_ATS_DRIVER.lock();
+                let driver = ATS_DRIVER.current_ref_raw();
+                // let driver = GLOBAL_ATS_DRIVER.lock();
                 driver.ps_fetch()
             };
             // let _task = unsafe {
