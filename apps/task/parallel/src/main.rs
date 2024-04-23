@@ -73,7 +73,7 @@ fn main() {
     let start_time: std::time::Instant = std::time::Instant::now();
     for i in 0..NUM_TASKS {
         let vec = vec.clone();
-        tasks.push(thread::spawn(move || {
+        tasks.push(thread::spawn_async(async move {
             let left = i * (NUM_DATA / NUM_TASKS);
             let right = (left + (NUM_DATA / NUM_TASKS)).min(NUM_DATA);
             println!(
@@ -85,11 +85,28 @@ fn main() {
             );
 
             let partial_sum: u64 = vec[left..right].iter().map(sqrt).sum();
-            barrier();
+            // barrier();
 
             println!("part {}: {:?} finished", i, thread::current().id());
             partial_sum
         }));
+        // tasks.push(thread::spawn(move || {
+        //     let left = i * (NUM_DATA / NUM_TASKS);
+        //     let right = (left + (NUM_DATA / NUM_TASKS)).min(NUM_DATA);
+        //     println!(
+        //         "part {}: {:?} [{}, {})",
+        //         i,
+        //         thread::current().id(),
+        //         left,
+        //         right
+        //     );
+
+        //     let partial_sum: u64 = vec[left..right].iter().map(sqrt).sum();
+        //     // barrier();
+
+        //     println!("part {}: {:?} finished", i, thread::current().id());
+        //     partial_sum
+        // }));
     }
 
     let actual: u64 = tasks.into_iter().map(|t| t.join().unwrap()).sum();

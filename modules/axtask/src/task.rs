@@ -97,6 +97,10 @@ impl AxTask {
         self.inner.is_blocked()
     }
 
+    pub(crate) fn is_exited(&self) -> bool {
+        self.inner.is_exited()
+    }
+
     pub(crate) fn get_priority(&self) -> usize {
         self.inner.get_priority()
     }
@@ -159,14 +163,15 @@ impl AxTask {
         }
     }
 
-    pub fn join_sync(&self) -> Option<i32> {
-        assert!(!self.is_async());
-        // unsafe {
-        //     let inner = &*(self.inner.as_ref() as *const dyn AbsTaskInner as *const () as *const TaskInner);
-        //     inner.join()
-        // }
-        let inner = self.inner.to_task_inner().unwrap();
-        inner.join()
+    pub fn join(&self) -> Option<i32> {
+        if self.inner.is_async() {
+            let inner = self.inner.to_async_task_inner().unwrap();
+            inner.join()
+        }
+        else {
+            let inner = self.inner.to_task_inner().unwrap();
+            inner.join()
+        }
     }
 
     /// This function should be called after this task is added into a block queue. Otherwise, task won't wake.
@@ -239,9 +244,9 @@ impl AxTask {
         // } else {
             // let inner = unsafe { &*(self.inner.as_ref() as *const dyn AbsTaskInner as *const () as *const TaskInner) };
             let inner = self.inner.to_task_inner().unwrap();
-            self.set_state(TaskState::Exited);
             inner.exit_code.store(exit_code, Ordering::Release);
-            inner.wait_for_exit.notify_all_locked(false);
+            self.set_state(TaskState::Exited);
+            // inner.wait_for_exit.notify_all_locked(false);
             EXITED_TASKS.lock().push_back(self.clone());
             WAIT_FOR_EXIT.notify_one_locked(false);
             
@@ -300,7 +305,7 @@ pub struct TaskInner {
     preempt_disable_count: AtomicUsize,
 
     exit_code: AtomicI32,
-    wait_for_exit: WaitQueue,
+    pub(crate) wait_for_exit: WaitQueue,
 
     kstack: Option<TaskStack>,
     ctx: UnsafeCell<TaskContext>,
@@ -417,48 +422,36 @@ pub trait TaskInfo {
     /// Get a combined string of the task ID and name.
     fn id_name(&self) -> alloc::string::String;
 
-    #[inline]
     fn state(&self) -> TaskState;
 
-    #[inline]
     fn set_state(&self, state: TaskState);
 
-    #[inline]
     fn is_running(&self) -> bool;
 
-    #[inline]
     fn is_ready(&self) -> bool;
 
-    #[inline]
     fn is_blocked(&self) -> bool;
 
-    #[inline]
+    fn is_exited(&self) -> bool;
+
     fn get_priority(&self) -> usize;
 
-    #[inline]
     fn set_priority(&self, priority: usize);
 
-    #[inline]
     fn is_init(&self) -> bool;
 
-    #[inline]
     fn is_idle(&self) -> bool;
 
-    #[inline]
     fn in_wait_queue(&self) -> bool;
 
-    #[inline]
     fn set_in_wait_queue(&self, in_wait_queue: bool);
 
-    #[inline]
     #[cfg(feature = "irq")]
     fn in_timer_list(&self) -> bool;
 
-    #[inline]
     #[cfg(feature = "irq")]
     fn set_in_timer_list(&self, in_timer_list: bool);
 
-    #[inline]
     fn is_async(&self) -> bool;
 }
 
@@ -478,74 +471,73 @@ impl TaskInfo for TaskInner {
         alloc::format!("Task({}, {:?})", self.id.as_u64(), self.name)
     }
 
-    #[inline]
+    
     fn state(&self) -> TaskState {
         self.state.load(Ordering::Acquire).into()
     }
 
-    #[inline]
+    
     fn set_state(&self, state: TaskState) {
         self.state.store(state as u8, Ordering::Release)
     }
 
-    #[inline]
+    
     fn is_running(&self) -> bool {
         matches!(self.state(), TaskState::Running)
     }
 
-    #[inline]
+    
     fn is_ready(&self) -> bool {
         matches!(self.state(), TaskState::Ready)
     }
 
-    #[inline]
+    
     fn is_blocked(&self) -> bool {
         matches!(self.state(), TaskState::Blocked)
     }
 
-    #[inline]
+    fn is_exited(&self) -> bool {
+        matches!(self.state(), TaskState::Exited)
+    }
+
+    
     fn get_priority(&self) -> usize {
         self.priority.load(Ordering::Relaxed)
     }
 
-    #[inline]
+    
     fn set_priority(&self, priority: usize) {
         self.priority.store(priority, Ordering::Relaxed);
     }
 
-    #[inline]
+    
     fn is_init(&self) -> bool {
         self.is_init
     }
 
-    #[inline]
+    
     fn is_idle(&self) -> bool {
         self.is_idle
     }
 
-    #[inline]
     fn in_wait_queue(&self) -> bool {
         self.in_wait_queue.load(Ordering::Acquire)
     }
 
-    #[inline]
     fn set_in_wait_queue(&self, in_wait_queue: bool) {
         self.in_wait_queue.store(in_wait_queue, Ordering::Release);
     }
 
-    #[inline]
     #[cfg(feature = "irq")]
     fn in_timer_list(&self) -> bool {
         self.in_timer_list.load(Ordering::Acquire)
     }
 
-    #[inline]
     #[cfg(feature = "irq")]
     fn set_in_timer_list(&self, in_timer_list: bool) {
         self.in_timer_list.store(in_timer_list, Ordering::Release);
     }
     
-    #[inline]
     fn is_async(&self) -> bool {
         false
     }
@@ -556,8 +548,9 @@ impl TaskInner {
     ///
     /// It will return immediately if the task has already exited (but not dropped).
     pub fn join(&self) -> Option<i32> {
-        self.wait_for_exit
-            .wait_until(|| self.state() == TaskState::Exited);
+        if !self.is_exited() {
+            self.wait_for_exit.wait();
+        }
         Some(self.exit_code.load(Ordering::Acquire))
     }
 }
@@ -740,9 +733,22 @@ pub struct AsyncTaskInner {
     #[cfg(feature = "irq")]
     in_timer_list: AtomicBool,
 
-    wait_for_exit: WaitQueue,
+    pub(crate) exit_code: AtomicI32,
+    pub(crate) wait_for_exit: WaitQueue,
 
     fut: UnsafeCell<Pin<Box<dyn Future<Output = i32> + Send + Sync>>>,
+}
+
+impl AsyncTaskInner {
+    /// Wait for the task to exit, and return the exit code.
+    ///
+    /// It will return immediately if the task has already exited (but not dropped).
+    pub fn join(&self) -> Option<i32> {
+        if !self.is_exited() {
+            self.wait_for_exit.wait();
+        }
+        Some(self.exit_code.load(Ordering::Acquire))
+    }
 }
 
 unsafe impl Send for AsyncTaskInner { }
@@ -775,74 +781,77 @@ impl TaskInfo for AsyncTaskInner {
         alloc::format!("Task({}, {:?})", self.id.as_u64(), self.name)
     }
 
-    #[inline]
+    
     fn state(&self) -> TaskState {
         self.state.load(Ordering::Acquire).into()
     }
 
-    #[inline]
+    
     fn set_state(&self, state: TaskState) {
         self.state.store(state as u8, Ordering::Release)
     }
 
-    #[inline]
+    
     fn is_running(&self) -> bool {
         matches!(self.state(), TaskState::Running)
     }
 
-    #[inline]
+    
     fn is_ready(&self) -> bool {
         matches!(self.state(), TaskState::Ready)
     }
 
-    #[inline]
+    
     fn is_blocked(&self) -> bool {
         matches!(self.state(), TaskState::Blocked)
     }
 
-    #[inline]
+    fn is_exited(&self) -> bool {
+        matches!(self.state(), TaskState::Exited)
+    }
+
     fn get_priority(&self) -> usize {
         self.priority.load(Ordering::Relaxed)
     }
 
-    #[inline]
+    
     fn set_priority(&self, priority: usize) {
         self.priority.store(priority, Ordering::Relaxed);
     }
 
-    #[inline]
+    
     fn is_init(&self) -> bool {
         self.is_init
     }
 
-    #[inline]
+    
     fn is_idle(&self) -> bool {
         self.is_idle
     }
 
-    #[inline]
+    
     fn in_wait_queue(&self) -> bool {
         self.in_wait_queue.load(Ordering::Acquire)
     }
 
-    #[inline]
+    
     fn set_in_wait_queue(&self, in_wait_queue: bool) {
         self.in_wait_queue.store(in_wait_queue, Ordering::Release);
     }
 
-    #[inline]
+    
     #[cfg(feature = "irq")]
     fn in_timer_list(&self) -> bool {
         self.in_timer_list.load(Ordering::Acquire)
     }
 
-    #[inline]
+    
     #[cfg(feature = "irq")]
     fn set_in_timer_list(&self, in_timer_list: bool) {
         self.in_timer_list.store(in_timer_list, Ordering::Release);
     }
     
-    #[inline]
+    
     fn is_async(&self) -> bool {
         true
     }
@@ -864,6 +873,7 @@ impl AsyncTaskInner {
             in_wait_queue: AtomicBool::new(false),
             #[cfg(feature = "irq")]
             in_timer_list: AtomicBool::new(false),
+            exit_code: AtomicI32::new(0),
             wait_for_exit: WaitQueue::new(),
             fut: UnsafeCell::new(Box::pin(fut))
         };

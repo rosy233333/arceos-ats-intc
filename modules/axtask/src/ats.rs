@@ -1,9 +1,9 @@
-﻿use core::{cell::{RefCell, UnsafeCell}, hint::spin_loop, task::Poll};
+﻿use core::{cell::{RefCell, UnsafeCell}, hint::spin_loop, sync::atomic::Ordering, task::Poll};
 use ats_intc::AtsIntc;
 use axhal::{arch::TaskContext, cpu::this_cpu_id};
 use lazy_init::LazyInit;
 use spinlock::SpinNoIrq;
-use crate::{spawn_async, task::{AbsTaskInner, AsyncTaskInner, AxTask, TaskStack}, AxTaskRef, CurrentTask, WaitQueue};
+use crate::{spawn_async, task::{AbsTaskInner, AsyncTaskInner, AxTask, TaskInfo, TaskStack, TaskState}, AxTaskRef, CurrentTask, WaitQueue};
 use core::task::{ Context, Waker };
 use alloc::{collections::VecDeque, sync::Arc};
 use core::arch::asm;
@@ -85,6 +85,7 @@ impl Ats {
                             // ct_lock[cpu_id].set_current(Some(task.clone()));
                             CURRENT_TASKS.current_ref_raw().set_current(Some(task.clone()));
                         }
+                        task.set_state(TaskState::Running);
                         let poll_result = task.poll(&mut Context::from_waker(&Waker::from(task.clone())));
                         unsafe {
                             // let ct_lock = CURRENT_TASKS.lock();
@@ -93,6 +94,16 @@ impl Ats {
                         }
                         match poll_result { 
                             Poll::Ready(value) => {
+                                if task.is_async() {
+                                    let inner = task.inner.to_async_task_inner().unwrap();
+                                    inner.exit_code.store(value, Ordering::Release);
+                                    inner.set_state(TaskState::Exited);
+                                    inner.wait_for_exit.notify_all(false);
+                                }
+                                else {
+                                    let inner = task.inner.to_task_inner().unwrap();
+                                    inner.wait_for_exit.notify_all(false);
+                                }
                                 info!("  task return {}.", value);
                             },
                             Poll::Pending => {

@@ -1,5 +1,4 @@
  //! Thread APIs for multi-threading configuration.
-
 extern crate alloc;
 
 use crate::io;
@@ -157,41 +156,43 @@ impl AsyncBuilder {
     /// is the main thread; the whole process is terminated when the main
     /// thread finishes). The join handle can be used to block on
     /// termination of the spawned thread.
-    pub fn spawn<F>(self, f: F) -> io::Result<()>
+    pub fn spawn<F, T>(self, f: F) -> io::Result<JoinHandle<T>>
     where
-        F: Future<Output = i32> + Send + Sync + 'static,
+        F: Future<Output = T> + Send + Sync + 'static,
+        T: Send + 'static,
     {
         unsafe { self.spawn_unchecked(f) }
     }
 
-    unsafe fn spawn_unchecked<F>(self, f: F) -> io::Result<()>
+    unsafe fn spawn_unchecked<F, T>(self, f: F) -> io::Result<JoinHandle<T>>
     where
-        F: Future<Output = i32> + Send + Sync + 'static,
+        F: Future<Output = T> + Send + Sync + 'static,
+        T: Send + 'static,
     {
         let name = self.name.unwrap_or_default();
 
-        // let my_packet = Arc::new(Packet {
-        //     result: UnsafeCell::new(None),
-        // });
-        // let their_packet = my_packet.clone();
+        let my_packet = Arc::new(Packet {
+            result: UnsafeCell::new(None),
+        });
+        let their_packet = my_packet.clone();
 
-        // let main = move || {
-        //     let ret = f();
-        //     // SAFETY: `their_packet` as been built just above and moved by the
-        //     // closure (it is an Arc<...>) and `my_packet` will be stored in the
-        //     // same `JoinHandle` as this closure meaning the mutation will be
-        //     // safe (not modify it and affect a value far away).
-        //     unsafe { *their_packet.result.get() = Some(ret) };
-        //     drop(their_packet);
-        // };
+        let main_async = async move {
+            let ret = f.await;
+            // SAFETY: `their_packet` as been built just above and moved by the
+            // closure (it is an Arc<...>) and `my_packet` will be stored in the
+            // same `JoinHandle` as this closure meaning the mutation will be
+            // safe (not modify it and affect a value far away).
+            unsafe { *their_packet.result.get() = Some(ret) };
+            drop(their_packet);
+            0
+        };
 
-        let task = api::ax_spawn_async(f, name);
-        // Ok(JoinHandle {
-        //     thread: Thread::from_id(task.id()),
-        //     native: task,
-        //     packet: my_packet,
-        // })
-        Ok(())
+        let task = api::ax_spawn_async(main_async, name);
+        Ok(JoinHandle {
+            thread: Thread::from_id(task.id()),
+            native: task,
+            packet: my_packet,
+        })
     }
 }
 
@@ -218,11 +219,12 @@ where
     Builder::new().spawn(f).expect("failed to spawn thread")
 }
 
-pub fn spawn_async<F>(f: F)
+pub fn spawn_async<F, T>(f: F) -> JoinHandle<T>
 where
-    F: Future<Output = i32> + Send + Sync + 'static,
+    F: Future<Output = T> + Send + Sync + 'static,
+    T: Send + 'static,
 {
-    AsyncBuilder::new().spawn(f).expect("failed to spawn thread");
+    AsyncBuilder::new().spawn(f).expect("failed to spawn thread")
 }
 
 struct Packet<T> {
