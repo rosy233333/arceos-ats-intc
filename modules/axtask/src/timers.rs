@@ -21,8 +21,8 @@ impl TimerEvent for TaskWakeupEvent {
         let task_ref = self.0.into_task_ref();
         unsafe {
             // let lock = DRIVER_LOCK.lock();
-            let driver = ATS_DRIVER.current_ref_raw();
-            // let driver = GLOBAL_ATS_DRIVER.lock();
+            // let driver = ATS_DRIVER.current_ref_raw();
+            let driver = GLOBAL_ATS_DRIVER.lock();
             driver.ps_push(task_ref, priority);
         }
         // rq.unblock_task(self.0, true);

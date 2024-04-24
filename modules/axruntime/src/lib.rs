@@ -158,7 +158,7 @@ pub extern "C" fn rust_main(cpu_id: usize, dtb: usize) -> ! {
         percpu::init(SMP);
         percpu::set_local_thread_pointer(cpu_id);
         axtask::init();
-        error!("multitask start spawn main");
+        // error!("multitask start spawn main");
         axtask::spawn_init(|| { 
             unsafe{ 
                 main();
@@ -170,7 +170,7 @@ pub extern "C" fn rust_main(cpu_id: usize, dtb: usize) -> ! {
         //         0
         //     });
         // }
-        error!("multitask spawn main complete");
+        // error!("multitask spawn main complete");
     }
 
     #[cfg(any(feature = "fs", feature = "net", feature = "display"))]
@@ -212,7 +212,7 @@ pub extern "C" fn rust_main(cpu_id: usize, dtb: usize) -> ! {
 
     #[cfg(feature = "multitask")]
     {
-        error!("main core: ready to run executor");
+        // error!("main core: ready to run executor");
         // if(cpu_id != 1) {
         //     loop {
         //         spin_loop();

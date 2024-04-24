@@ -90,7 +90,7 @@ pub fn init_network(mut net_devs: AxDeviceContainer<AxNetDevice>) {
                 },
                 None => {
                     // error!("delay is none");
-                    async_sleep(default_delay).await; // 需要修改
+                    async_sleep(default_delay).await;
                 },
             }
         }

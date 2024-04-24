@@ -58,8 +58,8 @@ impl Ats {
             info!("  into Ats::run");
 
             let ats_task = unsafe {
-                let driver = ATS_DRIVER.current_ref_raw();
-                // let driver = GLOBAL_ATS_DRIVER.lock();
+                // let driver = ATS_DRIVER.current_ref_raw();
+                let driver = GLOBAL_ATS_DRIVER.lock();
                 driver.ps_fetch()
             };
             // let _task = unsafe {
@@ -96,8 +96,6 @@ impl Ats {
                             Poll::Ready(value) => {
                                 if task.is_async() {
                                     let inner = task.inner.to_async_task_inner().unwrap();
-                                    inner.exit_code.store(value, Ordering::Release);
-                                    inner.set_state(TaskState::Exited);
                                     inner.wait_for_exit.notify_all(false);
                                 }
                                 else {
@@ -107,6 +105,17 @@ impl Ats {
                                 info!("  task return {}.", value);
                             },
                             Poll::Pending => {
+                                // 对于yield的情况，将task放回调度器
+                                if task.is_ready() {
+                                    let priority = task.get_priority();
+                                    let task_ref = task.into_task_ref();
+                                    unsafe {
+                                        // let lock = DRIVER_LOCK.lock();
+                                        // let driver = ATS_DRIVER.current_ref_raw();
+                                        let driver = GLOBAL_ATS_DRIVER.lock();
+                                        driver.ps_push(task_ref, priority);
+                                    }
+                                }
                                 info!("  task not finished.");
                             },
                         }

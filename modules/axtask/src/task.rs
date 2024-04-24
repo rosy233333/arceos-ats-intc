@@ -41,8 +41,8 @@ impl Wake for AxTask {
         let task_ref = self.into_task_ref();
         unsafe {
             // let lock = DRIVER_LOCK.lock();
-            let driver = ATS_DRIVER.current_ref_raw();
-            // let driver = GLOBAL_ATS_DRIVER.lock();
+            // let driver = ATS_DRIVER.current_ref_raw();
+            let driver = GLOBAL_ATS_DRIVER.lock();
             driver.ps_push(task_ref, priority);
         }
     }
@@ -145,14 +145,14 @@ impl AxTask {
 
         self.set_state(TaskState::Ready);
 
-        let priority = self.get_priority();
-        let task_ref = self.clone().into_task_ref();
-        unsafe {
-            // let lock = DRIVER_LOCK.lock();
-            let driver = ATS_DRIVER.current_ref_raw();
-            // let driver = GLOBAL_ATS_DRIVER.lock();
-            driver.ps_push(task_ref, priority);
-        }
+        // let priority = self.get_priority();
+        // let task_ref = self.clone().into_task_ref();
+        // unsafe {
+        //     // let lock = DRIVER_LOCK.lock();
+        //     // let driver = ATS_DRIVER.current_ref_raw();
+        //     let driver = GLOBAL_ATS_DRIVER.lock();
+        //     driver.ps_push(task_ref, priority);
+        // }
 
         let inner = self.inner.to_task_inner().unwrap();
         unsafe {
@@ -188,6 +188,44 @@ impl AxTask {
             let new_ctx = inner.ret_ctx_mut_ptr().as_ref().unwrap();
             old_ctx.switch_to_return_pending(new_ctx);
         }
+    }
+
+    /// This function should be called after this task is added into a block queue. Otherwise, task won't wake.
+    pub(crate) async fn async_block(self: Arc<Self>) {
+        assert!(self.is_async());
+        assert!(self.is_running());
+
+        struct AsyncBlock(UnsafeCell<usize>);
+        impl AsyncBlock {
+            fn new() -> Self {
+                Self{0: UnsafeCell::new(0)}
+            }
+        }
+        impl Future for AsyncBlock {
+            type Output = ();
+        
+            fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+                if unsafe { *self.0.get() } == 0 {
+                    unsafe {
+                        *self.0.get() = 1;
+                    }
+                    Poll::Pending
+                }
+                else if unsafe { *self.0.get() } == 1 {
+                    unsafe {
+                        *self.0.get() = 2;
+                    }
+                    Poll::Ready(())
+                }
+                else {
+                    panic!("async_block: invalid state");
+                    Poll::Pending
+                }
+            }
+        }
+
+        let block = Box::pin(AsyncBlock::new());
+        block.await;
     }
 
     pub fn sync_sleep_until(self: Arc<Self>, deadline: axhal::time::TimeValue) {
@@ -760,7 +798,15 @@ impl UnpinFuture for AsyncTaskInner {
     fn poll(&self, cx: &mut Context<'_>) -> Poll<Self::Output> {
         self.set_state(TaskState::Running);
         let res = unsafe { self.fut.get().as_mut().unwrap().as_mut().poll(cx) };
-        self.set_state(TaskState::Blocked);
+        match &res {
+            Poll::Pending => {
+                self.set_state(TaskState::Blocked);
+            },
+            Poll::Ready(value) => {
+                self.exit_code.store(*value, Ordering::Release);
+                self.set_state(TaskState::Exited);
+            }
+        }
         res
     }
 }

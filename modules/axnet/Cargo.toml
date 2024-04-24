@@ -15,7 +15,7 @@ poll = []
 poll_async = []
 interrupt = []
 interrupt_async = []
-default = ["smoltcp", "poll_async"]
+default = ["smoltcp"]
 
 [dependencies]
 log = "0.4"

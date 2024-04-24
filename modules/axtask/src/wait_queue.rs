@@ -105,6 +105,30 @@ impl WaitQueue {
         self.cancel_events(task);
     }
 
+    pub async fn wait_until_async<F>(&self, condition: F)
+    where
+        F: Fn() -> bool,
+    {
+        let task = crate::current().unwrap();
+        loop {
+            // let mut rq = RUN_QUEUE.lock();
+            // if condition() {
+            //     break;
+            // }
+            // rq.block_current(|task| {
+            //     task.set_in_wait_queue(true);
+            //     self.queue.lock().push_back(task);
+            // });
+            if condition() {
+                break;
+            }
+            task.set_in_wait_queue(true);
+            self.queue.lock().push_back(task.clone());
+            task.clone().async_block().await;
+        }
+        self.cancel_events(task);
+    }
+
     /// Blocks the current task and put it into the wait queue, until other tasks
     /// notify it, or the given duration has elapsed.
     #[cfg(feature = "irq")]
@@ -198,8 +222,8 @@ impl WaitQueue {
                 let task_ref = task.into_task_ref();
                 unsafe {
                     // let lock = DRIVER_LOCK.lock();
-                    let driver = ATS_DRIVER.current_ref_raw();
-                    // let driver = GLOBAL_ATS_DRIVER.lock();
+                    // let driver = ATS_DRIVER.current_ref_raw();
+                    let driver = GLOBAL_ATS_DRIVER.lock();
                     driver.ps_push(task_ref, priority);
                 }
             } else {
@@ -223,8 +247,8 @@ impl WaitQueue {
             let task_ref = task.clone().into_task_ref();
             unsafe {
                 // let lock = DRIVER_LOCK.lock();
-                let driver = ATS_DRIVER.current_ref_raw();
-                // let driver = GLOBAL_ATS_DRIVER.lock();
+                // let driver = ATS_DRIVER.current_ref_raw();
+                let driver = GLOBAL_ATS_DRIVER.lock();
                 driver.ps_push(task_ref, task.get_priority());
             }
             true
@@ -242,8 +266,8 @@ impl WaitQueue {
             let task_ref = task.into_task_ref();
             unsafe {
                 // let lock = DRIVER_LOCK.lock();
-                let driver = ATS_DRIVER.current_ref_raw();
-                // let driver = GLOBAL_ATS_DRIVER.lock();
+                // let driver = ATS_DRIVER.current_ref_raw();
+                let driver = GLOBAL_ATS_DRIVER.lock();
                 driver.ps_push(task_ref, priority);
             }
             true
@@ -261,8 +285,8 @@ impl WaitQueue {
             let task_ref = task.into_task_ref();
             unsafe {
                 // let lock = DRIVER_LOCK.lock();
-                let driver = ATS_DRIVER.current_ref_raw();
-                // let driver = GLOBAL_ATS_DRIVER.lock();
+                // let driver = ATS_DRIVER.current_ref_raw();
+                let driver = GLOBAL_ATS_DRIVER.lock();
                 driver.ps_push(task_ref, priority);
             }
         }
