@@ -61,6 +61,7 @@ macro_rules! info {
 
 fn http_server(mut stream: TcpStream) -> io::Result<()> {
     let mut buf = [0u8; 4096];
+    info!("before read http stream");
     let _len = stream.read(&mut buf)?;
 
     let response = format!(header!(), CONTENT.len(), CONTENT);

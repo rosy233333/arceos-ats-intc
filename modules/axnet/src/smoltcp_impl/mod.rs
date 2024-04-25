@@ -198,13 +198,19 @@ impl InterfaceWrapper {
         let mut sockets: axsync::MutexGuard<'static, SocketSet<'_>> = sockets.lock_async().await;
         let timestamp = Self::current_time();
         iface.poll(timestamp, dev.deref_mut(), &mut sockets);
+        drop(sockets);
+        drop(iface);
+        drop(dev);
     }
 
     pub fn poll_delay(&self, sockets: &Mutex<SocketSet>) -> Option<smoltcp::time::Duration>{
         let mut iface = self.iface.lock();
         let mut sockets = sockets.lock();
         let timestamp = Self::current_time();
-        iface.poll_delay(timestamp, &mut sockets)
+        let res = iface.poll_delay(timestamp, &mut sockets);
+        drop(sockets);
+        drop(iface);
+        res
     }
 
     pub async fn poll_delay_async(&'static self, sockets: &'static Mutex<SocketSet<'_>>) -> Option<smoltcp::time::Duration>{

@@ -237,6 +237,9 @@ impl WaitQueue {
                         driver.ps_push(task_ref, priority);
                     }
                 }
+                else {
+                    self.queue.lock().push_back(task);
+                }
             } else {
                 break;
             }
@@ -253,6 +256,7 @@ impl WaitQueue {
         let mut wq = self.queue.lock();
         if let Some(index) = wq.iter().position(|t| Arc::ptr_eq(t, task)) {
             if task.in_wait_queue() {
+                wq.remove(index);
                 task.set_in_wait_queue(false);
                 // rq.unblock_task(wq.remove(index).unwrap(), resched);
                 task.set_state(TaskState::Ready);
@@ -290,6 +294,7 @@ impl WaitQueue {
                 true
             }
             else {
+                self.queue.lock().push_back(task);
                 false
             }
         } else {
@@ -311,6 +316,9 @@ impl WaitQueue {
                     let driver = GLOBAL_ATS_DRIVER.lock();
                     driver.ps_push(task_ref, priority);
                 }
+            }
+            else {
+                self.queue.lock().push_back(task);
             }
         }
     }
