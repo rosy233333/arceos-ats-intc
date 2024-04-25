@@ -64,6 +64,7 @@ fn http_server(mut stream: TcpStream) -> io::Result<()> {
     let _len = stream.read(&mut buf)?;
 
     let response = format!(header!(), CONTENT.len(), CONTENT);
+    info!("before write http stream");
     stream.write_all(response.as_bytes())?;
 
     Ok(())

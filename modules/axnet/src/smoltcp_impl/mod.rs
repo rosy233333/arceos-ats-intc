@@ -123,9 +123,18 @@ impl<'a> SocketSetWrapper<'a> {
         ETH0.poll(&self.0);
     }
 
+    pub async fn poll_interfaces_async(&'static self) {
+        ETH0.poll_async(&self.0).await;
+    }
+
     pub fn poll_interface_return_delay(&self) -> Option<smoltcp::time::Duration> {
         ETH0.poll(&self.0);
         ETH0.poll_delay(&self.0)
+    }
+
+    pub async fn poll_interface_return_delay_async(&'static self) -> Option<smoltcp::time::Duration> {
+        ETH0.poll_async(&self.0).await;
+        ETH0.poll_delay_async(&self.0).await
     }
 
     pub fn remove(&self, handle: SocketHandle) {
@@ -183,9 +192,24 @@ impl InterfaceWrapper {
         iface.poll(timestamp, dev.deref_mut(), &mut sockets);
     }
 
+    pub async fn poll_async(&'static self, sockets: &'static Mutex<SocketSet<'_>>) {
+        let mut dev: axsync::MutexGuard<'static, DeviceWrapper> = self.dev.lock_async().await;
+        let mut iface: axsync::MutexGuard<'static, Interface> = self.iface.lock_async().await;
+        let mut sockets: axsync::MutexGuard<'static, SocketSet<'_>> = sockets.lock_async().await;
+        let timestamp = Self::current_time();
+        iface.poll(timestamp, dev.deref_mut(), &mut sockets);
+    }
+
     pub fn poll_delay(&self, sockets: &Mutex<SocketSet>) -> Option<smoltcp::time::Duration>{
         let mut iface = self.iface.lock();
         let mut sockets = sockets.lock();
+        let timestamp = Self::current_time();
+        iface.poll_delay(timestamp, &mut sockets)
+    }
+
+    pub async fn poll_delay_async(&'static self, sockets: &'static Mutex<SocketSet<'_>>) -> Option<smoltcp::time::Duration>{
+        let mut iface: axsync::MutexGuard<'static, Interface> = self.iface.lock_async().await;
+        let mut sockets: axsync::MutexGuard<'static, SocketSet<'_>> = sockets.lock_async().await;
         let timestamp = Self::current_time();
         iface.poll_delay(timestamp, &mut sockets)
     }
@@ -312,8 +336,16 @@ pub fn poll_interfaces() {
     SOCKET_SET.poll_interfaces();
 }
 
-pub fn poll_interface_return_delay() -> Option<smoltcp::time::Duration> {
+pub async fn poll_interfaces_async() {
+    SOCKET_SET.poll_interfaces_async().await;
+}
+
+pub fn poll_interfaces_return_delay() -> Option<smoltcp::time::Duration> {
     SOCKET_SET.poll_interface_return_delay()
+}
+
+pub async fn poll_interfaces_return_delay_async() -> Option<smoltcp::time::Duration> {
+    SOCKET_SET.poll_interface_return_delay_async().await
 }
 
 /// Benchmark raw socket transmit bandwidth.

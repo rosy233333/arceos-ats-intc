@@ -39,7 +39,7 @@ use core::task::Poll;
 pub use self::net_impl::TcpSocket;
 pub use self::net_impl::UdpSocket;
 pub use self::net_impl::{bench_receive, bench_transmit};
-pub use self::net_impl::{dns_query, poll_interfaces};
+pub use self::net_impl::dns_query;
 
 use axdriver::{prelude::*, AxDeviceContainer};
 use axtask::async_sleep;
@@ -48,7 +48,10 @@ use axtask::register_irq_handler;
 use axtask::sleep;
 use axtask::spawn;
 use axtask::spawn_async;
-use net_impl::poll_interface_return_delay;
+use net_impl::poll_interfaces_return_delay;
+use net_impl::poll_interfaces_return_delay_async;
+pub use net_impl::poll_interfaces;
+use net_impl::poll_interfaces_async;
 
 const VIRTIO_NET_IRQ_NUM: usize = 7;
 
@@ -64,7 +67,7 @@ pub fn init_network(mut net_devs: AxDeviceContainer<AxNetDevice>) {
     spawn(|| {
         loop {
             let default_delay = core::time::Duration::from_secs(1);
-            let delay = poll_interface_return_delay();
+            let delay = poll_interfaces_return_delay();
             match delay {
                 Some(dur) => {
                     // error!("delay is sone");
@@ -82,7 +85,7 @@ pub fn init_network(mut net_devs: AxDeviceContainer<AxNetDevice>) {
     spawn_async(async {
         loop {
             let default_delay = core::time::Duration::from_secs(1);
-            let delay = poll_interface_return_delay();
+            let delay = poll_interfaces_return_delay_async().await;
             match delay {
                 Some(dur) => {
                     // error!("delay is sone");
@@ -115,7 +118,7 @@ pub fn init_network(mut net_devs: AxDeviceContainer<AxNetDevice>) {
             type Output = i32;
         
             fn poll(self: core::pin::Pin<&mut Self>, cx: &mut core::task::Context<'_>) -> core::task::Poll<Self::Output> {
-                poll_interfaces();
+                poll_interfaces_async().await;
                 register_async_irq_handler(VIRTIO_NET_IRQ_NUM, AsyncNetIrqHandler { });
                 Poll::Pending
             }

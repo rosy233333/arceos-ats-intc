@@ -21,23 +21,24 @@ use axhal::tls::TlsArea;
 use axhal::arch::TaskContext;
 use memory_addr::{align_up_4k, VirtAddr, PAGE_SIZE_4K};
 
-use crate::ats::{DRIVER_LOCK, GLOBAL_ATS_DRIVER, PROCESS_ID};
-use crate::ats::{EXITED_TASKS, WAIT_FOR_EXIT};
+use crate::ats::{DRIVER_LOCK, GLOBAL_ATS_DRIVER, PROCESS_ID, WAIT_FOR_EXIT};
+use crate::ats::EXITED_TASKS;
 use crate::{AxTaskRef, WaitQueue};
 use crate::ats::ATS_DRIVER;
 
-pub trait AbsTaskInner: UnpinFuture<Output = i32> + Downcast + TaskInfo + Send + Sync { }
-impl AbsTaskInner for TaskInner { }
-impl AbsTaskInner for AsyncTaskInner { }
+pub trait AbsTaskInner: Downcast + TaskInfo + Send + Sync { }
+impl AbsTaskInner for SyncInner { }
+impl AbsTaskInner for AsyncInner { }
 
 pub struct AxTask {
-    pub inner: Box<dyn AbsTaskInner>,
+    pub task_inner: Box<dyn AbsTaskInner>,
+    pub general_inner: GeneralInner,
 }
 
 impl Wake for AxTask {
     fn wake(self: Arc<Self>) {
-        self.inner.set_state(TaskState::Ready);
-        let priority = self.inner.get_priority();
+        self.task_inner.set_state(TaskState::Ready);
+        let priority = self.task_inner.get_priority();
         let task_ref = self.into_task_ref();
         unsafe {
             // let lock = DRIVER_LOCK.lock();
@@ -49,94 +50,138 @@ impl Wake for AxTask {
 }
 
 impl AxTask {
-    pub(crate) fn new_sync(inner: TaskInner) -> Self {
+    pub(crate) fn new_sync(inner: SyncInner) -> Self {
         Self {
-            inner: Box::new(inner),
+            task_inner: Box::new(inner),
+            general_inner: GeneralInner::new(),
         }
     }
 
-    pub(crate) fn new_async(inner: AsyncTaskInner) -> Self {
+    pub(crate) fn new_async(inner: AsyncInner) -> Self {
         Self {
-            inner: Box::new(inner),
+            task_inner: Box::new(inner),
+            general_inner: GeneralInner::new(),
+        }
+    }
+
+    pub(crate) fn register_return_action<F>(&self, action: F)
+    where F: FnOnce(AxTaskRef) + Send + Sync + 'static {
+        unsafe {
+            *self.general_inner.return_action.get() = Some(Box::into_raw(Box::new(action)));
+        }
+    }
+
+    pub(crate) fn clear_return_action(&self) {
+        unsafe {
+            *self.general_inner.return_action.get() = None;
         }
     }
 
     pub(crate) fn poll(&self, cx: &mut Context<'_>) -> Poll<i32> {
-        self.inner.poll(cx)
+        // self.inner.poll(cx)
+        self.set_state(TaskState::Running);
+        self.clear_return_action();
+        if self.is_async() {
+            let inner = self.task_inner.to_async_task_inner().unwrap();
+            let res = unsafe { inner.fut.get().as_mut().unwrap().as_mut().poll(cx) };
+            match &res {
+                Poll::Pending => {
+                    self.set_state(TaskState::Blocked);
+                },
+                Poll::Ready(value) => {
+                    inner.exit_code.store(*value, Ordering::Release);
+                    self.set_state(TaskState::Exited);
+                    self.register_return_action(|task| {
+                        let inner = task.task_inner.to_async_task_inner().unwrap();
+                        inner.wait_for_exit.notify_all(false);
+                    });
+                }
+            }
+            res
+        }
+        else {
+            info!("into poll");
+            let inner = self.task_inner.to_task_inner().unwrap();
+            unsafe {
+                let old_ctx = inner.ret_ctx_mut_ptr().as_mut().unwrap();
+                let new_ctx = inner.ctx_mut_ptr().as_ref().unwrap();
+                old_ctx.switch_to_receive_exit_value(new_ctx)
+            }
+        }
     }
 
     pub fn id(&self) -> TaskId {
-        self.inner.id()
+        self.task_inner.id()
     }
 
     pub(crate) fn name(&self) -> &str {
-        self.inner.name()
+        self.task_inner.name()
     }
 
     pub fn id_name(&self) -> String {
-        self.inner.id_name()
+        self.task_inner.id_name()
     }
 
     pub(crate) fn state(&self) -> TaskState {
-        self.inner.state()
+        self.task_inner.state()
     }
 
     pub(crate) fn set_state(&self, state: TaskState) {
-        self.inner.set_state(state)
+        self.task_inner.set_state(state)
     }
 
     pub(crate) fn is_running(&self) -> bool {
-        self.inner.is_running()
+        self.task_inner.is_running()
     }
 
     pub(crate) fn is_ready(&self) -> bool {
-        self.inner.is_ready()
+        self.task_inner.is_ready()
     }
 
     pub(crate) fn is_blocked(&self) -> bool {
-        self.inner.is_blocked()
+        self.task_inner.is_blocked()
     }
 
     pub(crate) fn is_exited(&self) -> bool {
-        self.inner.is_exited()
+        self.task_inner.is_exited()
     }
 
     pub(crate) fn get_priority(&self) -> usize {
-        self.inner.get_priority()
+        self.task_inner.get_priority()
     }
 
     pub(crate) fn set_priority(&self, priority: usize) {
-        self.inner.set_priority(priority)
+        self.task_inner.set_priority(priority)
     }
 
     pub(crate) fn is_init(&self) -> bool {
-        self.inner.is_init()
+        self.task_inner.is_init()
     }
 
     pub(crate) fn is_idle(&self) -> bool {
-        self.inner.is_idle()
+        self.task_inner.is_idle()
     }
 
     pub(crate) fn in_wait_queue(&self) -> bool {
-        self.inner.in_wait_queue()
+        self.task_inner.in_wait_queue()
     }
 
     pub(crate) fn set_in_wait_queue(&self, in_wait_queue: bool) {
-        self.inner.set_in_wait_queue(in_wait_queue)
+        self.task_inner.set_in_wait_queue(in_wait_queue)
     }
 
     #[cfg(feature = "irq")]
     pub(crate) fn in_timer_list(&self) -> bool {
-        self.inner.in_timer_list()
+        self.task_inner.in_timer_list()
     }
 
     #[cfg(feature = "irq")]
     pub(crate) fn set_in_timer_list(&self, in_timer_list: bool) {
-        self.inner.set_in_timer_list(in_timer_list)
+        self.task_inner.set_in_timer_list(in_timer_list)
     }
 
     pub(crate) fn is_async(&self) -> bool {
-        self.inner.is_async()
+        self.task_inner.is_async()
     }
 
     pub fn sync_yield(self: Arc<Self>) {
@@ -144,17 +189,16 @@ impl AxTask {
         assert!(self.is_running());
 
         self.set_state(TaskState::Ready);
+        self.register_return_action(|task| {
+            let priority = task.get_priority();
+            unsafe {
+                // let driver = ATS_DRIVER.current_ref_raw();
+                let driver = GLOBAL_ATS_DRIVER.lock();
+                driver.ps_push(task.into_task_ref(), priority);
+            }
+        });
 
-        // let priority = self.get_priority();
-        // let task_ref = self.clone().into_task_ref();
-        // unsafe {
-        //     // let lock = DRIVER_LOCK.lock();
-        //     // let driver = ATS_DRIVER.current_ref_raw();
-        //     let driver = GLOBAL_ATS_DRIVER.lock();
-        //     driver.ps_push(task_ref, priority);
-        // }
-
-        let inner = self.inner.to_task_inner().unwrap();
+        let inner = self.task_inner.to_task_inner().unwrap();
         unsafe {
             // let inner = &*(self.inner.as_ref() as *const dyn AbsTaskInner as *const () as *const TaskInner);
             let old_ctx = inner.ctx_mut_ptr().as_mut().unwrap();
@@ -164,24 +208,26 @@ impl AxTask {
     }
 
     pub fn join(&self) -> Option<i32> {
-        if self.inner.is_async() {
-            let inner = self.inner.to_async_task_inner().unwrap();
+        if self.task_inner.is_async() {
+            let inner = self.task_inner.to_async_task_inner().unwrap();
             inner.join()
         }
         else {
-            let inner = self.inner.to_task_inner().unwrap();
+            let inner = self.task_inner.to_task_inner().unwrap();
             inner.join()
         }
     }
 
-    /// This function should be called after this task is added into a block queue. Otherwise, task won't wake.
-    pub(crate) fn sync_block(self: Arc<Self>) {
+    /// block the current task, then perform the `action` (usually to put this task into the block queue). 
+    pub(crate) fn sync_block<F>(self: Arc<Self>, action: F)
+    where F: FnOnce(AxTaskRef) + Send + Sync + 'static {
         assert!(!self.is_async());
         assert!(self.is_running());
 
         self.set_state(TaskState::Blocked);
+        self.register_return_action(action);
 
-        let inner = self.inner.to_task_inner().unwrap();
+        let inner = self.task_inner.to_task_inner().unwrap();
         unsafe {
             // let inner = &*(self.inner.as_ref() as *const dyn AbsTaskInner as *const () as *const TaskInner);
             let old_ctx = inner.ctx_mut_ptr().as_mut().unwrap();
@@ -190,8 +236,8 @@ impl AxTask {
         }
     }
 
-    /// This function should be called after this task is added into a block queue. Otherwise, task won't wake.
-    pub(crate) async fn async_block(self: Arc<Self>) {
+    pub(crate) async fn async_block<F>(self: Arc<Self>, action: F)
+    where F: FnOnce(AxTaskRef) + Send + Sync + 'static {
         assert!(self.is_async());
         assert!(self.is_running());
 
@@ -201,6 +247,8 @@ impl AxTask {
                 Self{0: UnsafeCell::new(0)}
             }
         }
+        // unsafe impl Send for AsyncBlock { }
+        unsafe impl Sync for AsyncBlock { }
         impl Future for AsyncBlock {
             type Output = ();
         
@@ -224,6 +272,7 @@ impl AxTask {
             }
         }
 
+        self.register_return_action(action);
         let block = Box::pin(AsyncBlock::new());
         block.await;
     }
@@ -234,9 +283,23 @@ impl AxTask {
 
         let now = axhal::time::current_time();
         if now < deadline {
-            crate::timers::set_alarm_wakeup(deadline, self.clone());
+            self.register_return_action(move |task| {
+                let now = axhal::time::current_time();
+                if now < deadline {
+                    crate::timers::set_alarm_wakeup(deadline, task);
+                }
+                else {
+                    // directly push to ready queue
+                    let priority = task.get_priority();
+                    unsafe {
+                        // let driver = ATS_DRIVER.current_ref_raw();
+                        let driver = GLOBAL_ATS_DRIVER.lock();
+                        driver.ps_push(task.into_task_ref(), priority);
+                    }
+                }
+            });
             self.set_state(TaskState::Blocked);
-            let inner = self.inner.to_task_inner().unwrap();
+            let inner = self.task_inner.to_task_inner().unwrap();
             unsafe {
                 // let inner = &*(self.inner.as_ref() as *const dyn AbsTaskInner as *const () as *const TaskInner);
                 let old_ctx = inner.ctx_mut_ptr().as_mut().unwrap();
@@ -259,7 +322,22 @@ impl AxTask {
                 assert!(self.task.is_running());
                 let now = axhal::time::current_time();
                 if now < self.deadline {
-                    crate::timers::set_alarm_wakeup(self.deadline, self.task.clone());
+                    let deadline = self.deadline;
+                    self.task.register_return_action(move |task| {
+                        let now = axhal::time::current_time();
+                        if now < deadline {
+                            crate::timers::set_alarm_wakeup(deadline, task);
+                        }
+                        else {
+                            // directly push to ready queue
+                            let priority = task.get_priority();
+                            unsafe {
+                                // let driver = ATS_DRIVER.current_ref_raw();
+                                let driver = GLOBAL_ATS_DRIVER.lock();
+                                driver.ps_push(task.into_task_ref(), priority);
+                            }
+                        }
+                    });
                     Poll::Pending
                 }
                 else {
@@ -276,26 +354,28 @@ impl AxTask {
         assert!(self.is_running());
         assert!(!self.is_idle());
         info!("into exit");
-        // if self.is_init() {
-        //     EXITED_TASKS.lock().clear();
-        //     axhal::misc::terminate();
-        // } else {
-            // let inner = unsafe { &*(self.inner.as_ref() as *const dyn AbsTaskInner as *const () as *const TaskInner) };
-            let inner = self.inner.to_task_inner().unwrap();
-            inner.exit_code.store(exit_code, Ordering::Release);
-            self.set_state(TaskState::Exited);
-            // inner.wait_for_exit.notify_all_locked(false);
-            EXITED_TASKS.lock().push_back(self.clone());
+        // let inner = unsafe { &*(self.inner.as_ref() as *const dyn AbsTaskInner as *const () as *const TaskInner) };
+        let inner = self.task_inner.to_task_inner().unwrap();
+        inner.exit_code.store(exit_code, Ordering::Release);
+        self.set_state(TaskState::Exited);
+        self.register_return_action(|task| {
+            // if task.is_init() {
+            //     EXITED_TASKS.lock().clear();
+            //     axhal::misc::terminate();
+            // }
+            let inner = task.task_inner.to_task_inner().unwrap();
+            inner.wait_for_exit.notify_all_locked(false);
+            EXITED_TASKS.lock().push_back(task);
             WAIT_FOR_EXIT.notify_one_locked(false);
-            
-            unsafe {
-                let old_ctx = inner.ctx_mut_ptr().as_mut().unwrap();
-                let new_ctx = inner.ret_ctx_mut_ptr().as_ref().unwrap();
-                old_ctx.switch_to_return_ready(new_ctx, exit_code);
-            }
+        });
+        
+        unsafe {
+            let old_ctx = inner.ctx_mut_ptr().as_mut().unwrap();
+            let new_ctx = inner.ret_ctx_mut_ptr().as_ref().unwrap();
+            old_ctx.switch_to_return_ready(new_ctx, exit_code);
+        }
 
-            unreachable!();
-        // }
+        unreachable!();
     }
 
     /// SAFETY: `task_ref` must be generated from `Self::into_task_ref`
@@ -305,6 +385,21 @@ impl AxTask {
 
     pub(crate) fn into_task_ref(self: Arc<Self>) -> TaskRef {
         unsafe { TaskRef::virt_task(Arc::into_raw(self) as usize) }
+    }
+}
+
+pub struct GeneralInner {
+    pub return_action: UnsafeCell<Option<*mut (dyn FnOnce(AxTaskRef) + Send + Sync)>>, // the action that scheduler should do when task return (yield / block / exit)
+}
+
+unsafe impl Send for GeneralInner {}
+unsafe impl Sync for GeneralInner {}
+
+impl GeneralInner {
+    pub fn new() -> Self {
+        Self {
+            return_action: UnsafeCell::new(None),
+        }
     }
 }
 
@@ -323,7 +418,7 @@ pub(crate) enum TaskState {
 }
 
 /// The inner task structure.
-pub struct TaskInner {
+pub struct SyncInner {
     id: TaskId,
     name: String,
     is_idle: bool,
@@ -382,15 +477,15 @@ impl From<u8> for TaskState {
     }
 }
 
-unsafe impl Send for TaskInner {}
-unsafe impl Sync for TaskInner {}
+unsafe impl Send for SyncInner {}
+unsafe impl Sync for SyncInner {}
 
 pub(crate) trait UnpinFuture {
     type Output;
     fn poll(&self, cx: &mut Context<'_>) -> Poll<Self::Output>;
 }
 
-impl UnpinFuture for TaskInner {
+impl UnpinFuture for SyncInner {
     type Output = i32;
     
     fn poll(&self, cx: &mut Context<'_>) -> Poll<Self::Output> {
@@ -405,47 +500,47 @@ impl UnpinFuture for TaskInner {
 }
 
 pub trait Downcast {
-    fn to_task_inner(&self) -> Option<&TaskInner>;
+    fn to_task_inner(&self) -> Option<&SyncInner>;
 
-    fn to_task_inner_mut(&mut self) -> Option<&mut TaskInner>;
+    fn to_task_inner_mut(&mut self) -> Option<&mut SyncInner>;
 
-    fn to_async_task_inner(&self) -> Option<&AsyncTaskInner>;
+    fn to_async_task_inner(&self) -> Option<&AsyncInner>;
 
-    fn to_async_task_inner_mut(&mut self) -> Option<&mut AsyncTaskInner>;
+    fn to_async_task_inner_mut(&mut self) -> Option<&mut AsyncInner>;
 }
 
-impl Downcast for TaskInner {
-    fn to_task_inner(&self) -> Option<&TaskInner> {
+impl Downcast for SyncInner {
+    fn to_task_inner(&self) -> Option<&SyncInner> {
         Some(self)
     }
 
-    fn to_task_inner_mut(&mut self) -> Option<&mut TaskInner> {
+    fn to_task_inner_mut(&mut self) -> Option<&mut SyncInner> {
         Some(self)
     }
 
-    fn to_async_task_inner(&self) -> Option<&AsyncTaskInner> {
+    fn to_async_task_inner(&self) -> Option<&AsyncInner> {
         None
     }
 
-    fn to_async_task_inner_mut(&mut self) -> Option<&mut AsyncTaskInner> {
+    fn to_async_task_inner_mut(&mut self) -> Option<&mut AsyncInner> {
         None
     }
 }
 
-impl Downcast for AsyncTaskInner {
-    fn to_task_inner(&self) -> Option<&TaskInner> {
+impl Downcast for AsyncInner {
+    fn to_task_inner(&self) -> Option<&SyncInner> {
         None
     }
 
-    fn to_task_inner_mut(&mut self) -> Option<&mut TaskInner> {
+    fn to_task_inner_mut(&mut self) -> Option<&mut SyncInner> {
         None
     }
 
-    fn to_async_task_inner(&self) -> Option<&AsyncTaskInner> {
+    fn to_async_task_inner(&self) -> Option<&AsyncInner> {
         Some(self)
     }
 
-    fn to_async_task_inner_mut(&mut self) -> Option<&mut AsyncTaskInner> {
+    fn to_async_task_inner_mut(&mut self) -> Option<&mut AsyncInner> {
         Some(self)
     }
 }
@@ -493,7 +588,7 @@ pub trait TaskInfo {
     fn is_async(&self) -> bool;
 }
 
-impl TaskInfo for TaskInner {
+impl TaskInfo for SyncInner {
     /// Gets the ID of the task.
     fn id(&self) -> TaskId {
         self.id
@@ -581,7 +676,7 @@ impl TaskInfo for TaskInner {
     }
 }
 
-impl TaskInner {
+impl SyncInner {
     /// Wait for the task to exit, and return the exit code.
     ///
     /// It will return immediately if the task has already exited (but not dropped).
@@ -594,7 +689,7 @@ impl TaskInner {
 }
 
 // private methods
-impl TaskInner {
+impl SyncInner {
     fn new_common(id: TaskId, name: String) -> Self {
         Self {
             id,
@@ -742,7 +837,7 @@ impl TaskInner {
     }
 }
 
-impl fmt::Debug for TaskInner {
+impl fmt::Debug for SyncInner {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("TaskInner")
             .field("id", &self.id)
@@ -752,14 +847,14 @@ impl fmt::Debug for TaskInner {
     }
 }
 
-impl Drop for TaskInner {
+impl Drop for SyncInner {
     fn drop(&mut self) {
         debug!("task drop: {}", self.id_name());
     }
 }
 
 /// The inner coroutine structure.
-pub struct AsyncTaskInner {
+pub struct AsyncInner {
     id: TaskId,
     name: String,
     is_idle: bool,
@@ -777,7 +872,7 @@ pub struct AsyncTaskInner {
     fut: UnsafeCell<Pin<Box<dyn Future<Output = i32> + Send + Sync>>>,
 }
 
-impl AsyncTaskInner {
+impl AsyncInner {
     /// Wait for the task to exit, and return the exit code.
     ///
     /// It will return immediately if the task has already exited (but not dropped).
@@ -789,10 +884,10 @@ impl AsyncTaskInner {
     }
 }
 
-unsafe impl Send for AsyncTaskInner { }
-unsafe impl Sync for AsyncTaskInner { }
+unsafe impl Send for AsyncInner { }
+unsafe impl Sync for AsyncInner { }
 
-impl UnpinFuture for AsyncTaskInner {
+impl UnpinFuture for AsyncInner {
     type Output = i32;
 
     fn poll(&self, cx: &mut Context<'_>) -> Poll<Self::Output> {
@@ -811,7 +906,7 @@ impl UnpinFuture for AsyncTaskInner {
     }
 }
 
-impl TaskInfo for AsyncTaskInner {
+impl TaskInfo for AsyncInner {
     /// Gets the ID of the task.
     fn id(&self) -> TaskId {
         self.id
@@ -903,7 +998,7 @@ impl TaskInfo for AsyncTaskInner {
     }
 }
 
-impl AsyncTaskInner {
+impl AsyncInner {
     /// Create a new task with the given entry function and stack size.
     pub(crate) fn new<F>(fut: F, name: String) -> AxTaskRef
     where
@@ -1037,7 +1132,7 @@ extern "C" fn task_entry() -> ! {
     let task = crate::current().unwrap();
     assert!(!task.is_async());
     // let task_inner = unsafe { &*(task.inner.as_ref() as *const dyn AbsTaskInner as *const () as *const TaskInner) };
-    let task_inner = task.inner.to_task_inner().unwrap();
+    let task_inner = task.task_inner.to_task_inner().unwrap();
     if let Some(entry) = task_inner.entry {
         unsafe { Box::from_raw(entry)() };
     }

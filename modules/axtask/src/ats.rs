@@ -3,9 +3,9 @@ use ats_intc::AtsIntc;
 use axhal::{arch::TaskContext, cpu::this_cpu_id};
 use lazy_init::LazyInit;
 use spinlock::SpinNoIrq;
-use crate::{spawn_async, task::{AbsTaskInner, AsyncTaskInner, AxTask, TaskInfo, TaskStack, TaskState}, AxTaskRef, CurrentTask, WaitQueue};
+use crate::{spawn_async, task::{AbsTaskInner, AsyncInner, AxTask, TaskInfo, TaskStack, TaskState}, AxTaskRef, CurrentTask, WaitQueue};
 use core::task::{ Context, Waker };
-use alloc::{collections::VecDeque, sync::Arc};
+use alloc::{collections::VecDeque, sync::Arc, boxed::Box};
 use core::arch::asm;
 use memory_addr::align_up_4k;
 use alloc::vec::Vec;
@@ -92,32 +92,39 @@ impl Ats {
                             // ct_lock[cpu_id].set_current(None);
                             CURRENT_TASKS.current_ref_raw().set_current(None);
                         }
-                        match poll_result { 
-                            Poll::Ready(value) => {
-                                if task.is_async() {
-                                    let inner = task.inner.to_async_task_inner().unwrap();
-                                    inner.wait_for_exit.notify_all(false);
-                                }
-                                else {
-                                    let inner = task.inner.to_task_inner().unwrap();
-                                    inner.wait_for_exit.notify_all(false);
-                                }
-                                info!("  task return {}.", value);
-                            },
-                            Poll::Pending => {
-                                // 对于yield的情况，将task放回调度器
-                                if task.is_ready() {
-                                    let priority = task.get_priority();
-                                    let task_ref = task.into_task_ref();
-                                    unsafe {
-                                        // let lock = DRIVER_LOCK.lock();
-                                        // let driver = ATS_DRIVER.current_ref_raw();
-                                        let driver = GLOBAL_ATS_DRIVER.lock();
-                                        driver.ps_push(task_ref, priority);
-                                    }
-                                }
-                                info!("  task not finished.");
-                            },
+                        // match poll_result { 
+                        //     Poll::Ready(value) => {
+                        //         // if task.is_async() {
+                        //         //     let inner = task.inner.to_async_task_inner().unwrap();
+                        //         //     inner.wait_for_exit.notify_all(false);
+                        //         // }
+                        //         // else {
+                        //         //     let inner = task.inner.to_task_inner().unwrap();
+                        //         //     inner.wait_for_exit.notify_all(false);
+                        //         // }
+                        //         info!("  task return {}.", value);
+                        //     },
+                        //     Poll::Pending => {
+                        //         // 对于yield的情况，将task放回调度器
+                        //         if task.is_ready() {
+                        //             let priority = task.get_priority();
+                        //             let task_ref = task.into_task_ref();
+                        //             unsafe {
+                        //                 // let lock = DRIVER_LOCK.lock();
+                        //                 // let driver = ATS_DRIVER.current_ref_raw();
+                        //                 let driver = GLOBAL_ATS_DRIVER.lock();
+                        //                 driver.ps_push(task_ref, priority);
+                        //             }
+                        //         }
+                        //         info!("  task not finished.");
+                        //     },
+                        // }
+                        unsafe {
+                            let action_option = task.general_inner.return_action.get();
+                            match (&mut *action_option).take() {
+                                Some(action) => { Box::from_raw(action)(task); },
+                                None => {},
+                            }
                         }
                 },
                 None => {

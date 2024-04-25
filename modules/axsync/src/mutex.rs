@@ -27,6 +27,11 @@ pub struct MutexGuard<'a, T: ?Sized + 'a> {
     data: *mut T,
 }
 
+// 为了使MutexGuard跨越协程的await点持有，因此需要这样impl
+// 协程跨越await点持有MutexGuard相当于线程拿着MutexGuard切换？但协程可能在不同的核（相当于不同线程）上执行，应该不会有问题？
+unsafe impl<'a, T: ?Sized + 'a> Sync for MutexGuard<'a, T> { }
+unsafe impl<'a, T: ?Sized + 'a> Send for MutexGuard<'a, T> { }
+
 // Same unsafe impls as `std::sync::Mutex`
 unsafe impl<T: ?Sized + Send> Sync for Mutex<T> {}
 unsafe impl<T: ?Sized + Send> Send for Mutex<T> {}
@@ -89,6 +94,37 @@ impl<T: ?Sized> Mutex<T> {
                     );
                     // Wait until the lock looks unlocked before retrying
                     self.wq.wait_until(|| !self.is_locked());
+                }
+            }
+        }
+        MutexGuard {
+            lock: self,
+            data: unsafe { &mut *self.data.get() },
+        }
+    }
+
+    /// used for `Future`s
+    pub async fn lock_async(&'static self) -> MutexGuard<'static, T> {
+        let current_id = current_id().unwrap();
+        loop {
+            // Can fail to lock even if the spinlock is not locked. May be more efficient than `try_lock`
+            // when called in a loop.
+            match self.owner_id.compare_exchange_weak(
+                0,
+                current_id,
+                Ordering::Acquire,
+                Ordering::Relaxed,
+            ) {
+                Ok(_) => break,
+                Err(owner_id) => {
+                    assert_ne!(
+                        owner_id,
+                        current_id,
+                        "{} tried to acquire mutex it already owns.",
+                        current_id
+                    );
+                    // Wait until the lock looks unlocked before retrying
+                    self.wq.wait_until_async(|| !self.is_locked()).await;
                 }
             }
         }

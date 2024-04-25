@@ -11,9 +11,9 @@ use spinlock::SpinNoIrq;
 use crate::ats::{Ats, ATS_DRIVER, ATS_EXECUTORS, CURRENT_TASKS, DRIVER_LOCK, GLOBAL_ATS_DRIVER};
 // pub(crate) use crate::run_queue::{AxRunQueue, RUN_QUEUE};
 
-use crate::task::{AbsTaskInner, AsyncTaskInner, AxTask};
+use crate::task::{AbsTaskInner, AsyncInner, AxTask};
 #[doc(cfg(feature = "multitask"))]
-pub use crate::task::{CurrentTask, TaskId, TaskInner};
+pub use crate::task::{CurrentTask, TaskId, SyncInner};
 #[doc(cfg(feature = "multitask"))]
 pub use crate::wait_queue::WaitQueue;
 
@@ -122,7 +122,7 @@ pub fn register_irq_handler<F>(irq_num: usize, handler: F) -> bool
 where
     F: Fn() + Send + 'static,
 {
-    let task = TaskInner::new(handler, "".into(), axconfig::TASK_STACK_SIZE);
+    let task = SyncInner::new(handler, "".into(), axconfig::TASK_STACK_SIZE);
     task.set_priority(0);
     unsafe {
         // let lock = DRIVER_LOCK.lock();
@@ -138,7 +138,7 @@ pub fn register_async_irq_handler<F>(irq_num: usize, handler: F) -> bool
 where
     F: Future<Output = i32> + Send + Sync + 'static,
 {
-    let task = AsyncTaskInner::new(handler, "".into());
+    let task = AsyncInner::new(handler, "".into());
     task.set_priority(0);
     unsafe {
         // let lock = DRIVER_LOCK.lock();
@@ -189,8 +189,8 @@ pub fn spawn_raw<F>(f: F, name: String, stack_size: usize) -> AxTaskRef
 where
     F: FnOnce() + Send + 'static,
 {
-    let task = TaskInner::new(f, name, stack_size);
-    let priority = task.inner.get_priority();
+    let task = SyncInner::new(f, name, stack_size);
+    let priority = task.task_inner.get_priority();
     let task_ref = task.clone().into_task_ref();
     // let leak = Arc::into_raw(task.clone()); // tempoary solution
     unsafe {
@@ -206,8 +206,8 @@ pub fn spawn_raw_init<F>(f: F, name: String, stack_size: usize) -> AxTaskRef
 where
     F: FnOnce() + Send + 'static,
 {
-    let task = TaskInner::new_init(f, name, stack_size);
-    let priority = task.inner.get_priority();
+    let task = SyncInner::new_init(f, name, stack_size);
+    let priority = task.task_inner.get_priority();
     let task_ref = task.clone().into_task_ref();
     // let leak = Arc::into_raw(task.clone()); // tempoary solution
     unsafe {
@@ -246,8 +246,8 @@ pub fn spawn_raw_async<F>(f: F, name: String) -> AxTaskRef
 where
     F: Future<Output = i32> + Send + Sync + 'static,
 {
-    let task = AsyncTaskInner::new(f, name);
-    let priority = task.inner.get_priority();
+    let task = AsyncInner::new(f, name);
+    let priority = task.task_inner.get_priority();
     let task_ref = task.clone().into_task_ref();
     // let leak = Arc::into_raw(task.clone()); // tempoary solution
     unsafe {
