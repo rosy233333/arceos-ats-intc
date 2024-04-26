@@ -229,7 +229,7 @@ impl WaitQueue {
                 task.set_in_wait_queue(false);
                 // rq.unblock_task(task, resched);
                 task.set_state(TaskState::Ready);
-                let priority = task.task_inner.get_priority();
+                let priority = task.get_priority();
                 let task_ref = task.into_task_ref();
                 unsafe {
                     // let lock = DRIVER_LOCK.lock();
@@ -276,7 +276,7 @@ impl WaitQueue {
             task.set_in_wait_queue(false);
             // rq.unblock_task(task, resched);
             task.set_state(TaskState::Ready);
-            let priority = task.task_inner.get_priority();
+            let priority = task.get_priority();
             let task_ref = task.into_task_ref();
             unsafe {
                 // let lock = DRIVER_LOCK.lock();
@@ -296,7 +296,7 @@ impl WaitQueue {
             task.set_in_wait_queue(false);
             // rq.unblock_task(task, resched);
             task.set_state(TaskState::Ready);
-            let priority = task.task_inner.get_priority();
+            let priority = task.get_priority();
             let task_ref = task.into_task_ref();
             unsafe {
                 // let lock = DRIVER_LOCK.lock();

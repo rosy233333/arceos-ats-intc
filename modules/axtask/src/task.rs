@@ -26,7 +26,7 @@ use crate::ats::EXITED_TASKS;
 use crate::{AxTaskRef, WaitQueue};
 use crate::ats::ATS_DRIVER;
 
-pub trait AbsTaskInner: Downcast + TaskInfo + Send + Sync { }
+pub trait AbsTaskInner: Downcast + IsAsync + Send + Sync { }
 impl AbsTaskInner for SyncInner { }
 impl AbsTaskInner for AsyncInner { }
 
@@ -37,8 +37,8 @@ pub struct AxTask {
 
 impl Wake for AxTask {
     fn wake(self: Arc<Self>) {
-        self.task_inner.set_state(TaskState::Ready);
-        let priority = self.task_inner.get_priority();
+        self.set_state(TaskState::Ready);
+        let priority = self.get_priority();
         let task_ref = self.into_task_ref();
         unsafe {
             // let lock = DRIVER_LOCK.lock();
@@ -50,17 +50,17 @@ impl Wake for AxTask {
 }
 
 impl AxTask {
-    pub(crate) fn new_sync(inner: SyncInner) -> Self {
+    pub(crate) fn new_sync(task_inner: SyncInner, general_inner: GeneralInner) -> Self {
         Self {
-            task_inner: Box::new(inner),
-            general_inner: GeneralInner::new(),
+            task_inner: Box::new(task_inner),
+            general_inner,
         }
     }
 
-    pub(crate) fn new_async(inner: AsyncInner) -> Self {
+    pub(crate) fn new_async(task_inner: AsyncInner, general_inner: GeneralInner) -> Self {
         Self {
-            task_inner: Box::new(inner),
-            general_inner: GeneralInner::new(),
+            task_inner: Box::new(task_inner),
+            general_inner,
         }
     }
 
@@ -89,11 +89,10 @@ impl AxTask {
                     self.set_state(TaskState::Blocked);
                 },
                 Poll::Ready(value) => {
-                    inner.exit_code.store(*value, Ordering::Release);
+                    self.general_inner.exit_code.store(*value, Ordering::Release);
                     self.set_state(TaskState::Exited);
                     self.register_return_action(|task| {
-                        let inner = task.task_inner.to_async_task_inner().unwrap();
-                        inner.wait_for_exit.notify_all(false);
+                        task.general_inner.wait_for_exit.notify_all(false);
                     });
                 }
             }
@@ -111,77 +110,81 @@ impl AxTask {
     }
 
     pub fn id(&self) -> TaskId {
-        self.task_inner.id()
+        self.general_inner.id()
     }
 
     pub(crate) fn name(&self) -> &str {
-        self.task_inner.name()
+        self.general_inner.name()
     }
 
     pub fn id_name(&self) -> String {
-        self.task_inner.id_name()
+        self.general_inner.id_name()
     }
 
     pub(crate) fn state(&self) -> TaskState {
-        self.task_inner.state()
+        self.general_inner.state()
     }
 
     pub(crate) fn set_state(&self, state: TaskState) {
-        self.task_inner.set_state(state)
+        self.general_inner.set_state(state)
     }
 
     pub(crate) fn is_running(&self) -> bool {
-        self.task_inner.is_running()
+        self.general_inner.is_running()
     }
 
     pub(crate) fn is_ready(&self) -> bool {
-        self.task_inner.is_ready()
+        self.general_inner.is_ready()
     }
 
     pub(crate) fn is_blocked(&self) -> bool {
-        self.task_inner.is_blocked()
+        self.general_inner.is_blocked()
     }
 
     pub(crate) fn is_exited(&self) -> bool {
-        self.task_inner.is_exited()
+        self.general_inner.is_exited()
     }
 
     pub(crate) fn get_priority(&self) -> usize {
-        self.task_inner.get_priority()
+        self.general_inner.get_priority()
     }
 
     pub(crate) fn set_priority(&self, priority: usize) {
-        self.task_inner.set_priority(priority)
+        self.general_inner.set_priority(priority)
     }
 
     pub(crate) fn is_init(&self) -> bool {
-        self.task_inner.is_init()
+        self.general_inner.is_init()
     }
 
     pub(crate) fn is_idle(&self) -> bool {
-        self.task_inner.is_idle()
+        self.general_inner.is_idle()
     }
 
     pub(crate) fn in_wait_queue(&self) -> bool {
-        self.task_inner.in_wait_queue()
+        self.general_inner.in_wait_queue()
     }
 
     pub(crate) fn set_in_wait_queue(&self, in_wait_queue: bool) {
-        self.task_inner.set_in_wait_queue(in_wait_queue)
+        self.general_inner.set_in_wait_queue(in_wait_queue)
     }
 
     #[cfg(feature = "irq")]
     pub(crate) fn in_timer_list(&self) -> bool {
-        self.task_inner.in_timer_list()
+        self.general_inner.in_timer_list()
     }
 
     #[cfg(feature = "irq")]
     pub(crate) fn set_in_timer_list(&self, in_timer_list: bool) {
-        self.task_inner.set_in_timer_list(in_timer_list)
+        self.general_inner.set_in_timer_list(in_timer_list)
     }
 
     pub(crate) fn is_async(&self) -> bool {
         self.task_inner.is_async()
+    }
+
+    pub fn join(&self) -> Option<i32> {
+        self.general_inner.join()
     }
 
     pub fn sync_yield(self: Arc<Self>) {
@@ -204,17 +207,6 @@ impl AxTask {
             let old_ctx = inner.ctx_mut_ptr().as_mut().unwrap();
             let new_ctx = inner.ret_ctx_mut_ptr().as_ref().unwrap();
             old_ctx.switch_to_return_pending(new_ctx);
-        }
-    }
-
-    pub fn join(&self) -> Option<i32> {
-        if self.task_inner.is_async() {
-            let inner = self.task_inner.to_async_task_inner().unwrap();
-            inner.join()
-        }
-        else {
-            let inner = self.task_inner.to_task_inner().unwrap();
-            inner.join()
         }
     }
 
@@ -247,7 +239,6 @@ impl AxTask {
                 Self{0: UnsafeCell::new(0)}
             }
         }
-        // unsafe impl Send for AsyncBlock { }
         unsafe impl Sync for AsyncBlock { }
         impl Future for AsyncBlock {
             type Output = ();
@@ -355,16 +346,16 @@ impl AxTask {
         assert!(!self.is_idle());
         info!("into exit");
         // let inner = unsafe { &*(self.inner.as_ref() as *const dyn AbsTaskInner as *const () as *const TaskInner) };
+        self.general_inner.exit_code.store(exit_code, Ordering::Release);
         let inner = self.task_inner.to_task_inner().unwrap();
-        inner.exit_code.store(exit_code, Ordering::Release);
         self.set_state(TaskState::Exited);
         self.register_return_action(|task| {
             // if task.is_init() {
             //     EXITED_TASKS.lock().clear();
             //     axhal::misc::terminate();
             // }
+            task.general_inner.wait_for_exit.notify_all_locked(false);
             let inner = task.task_inner.to_task_inner().unwrap();
-            inner.wait_for_exit.notify_all_locked(false);
             EXITED_TASKS.lock().push_back(task);
             WAIT_FOR_EXIT.notify_one_locked(false);
         });
@@ -389,6 +380,18 @@ impl AxTask {
 }
 
 pub struct GeneralInner {
+    id: TaskId,
+    name: String,
+    is_idle: bool,
+    is_init: bool,
+    state: AtomicU8,
+    priority: AtomicUsize,
+    in_wait_queue: AtomicBool,
+    #[cfg(feature = "irq")]
+    in_timer_list: AtomicBool,
+
+    exit_code: AtomicI32,
+    pub(crate) wait_for_exit: WaitQueue,
     pub return_action: UnsafeCell<Option<*mut (dyn FnOnce(AxTaskRef) + Send + Sync)>>, // the action that scheduler should do when task return (yield / block / exit)
 }
 
@@ -396,10 +399,101 @@ unsafe impl Send for GeneralInner {}
 unsafe impl Sync for GeneralInner {}
 
 impl GeneralInner {
-    pub fn new() -> Self {
-        Self {
-            return_action: UnsafeCell::new(None),
+    /// Gets the ID of the task.
+    #[inline(always)]
+    pub fn id(&self) -> TaskId {
+        self.id
+    }
+
+    /// Gets the name of the task.
+    #[inline(always)]
+    pub fn name(&self) -> &str {
+        self.name.as_str()
+    }
+
+    /// Get a combined string of the task ID and name.
+    #[inline(always)]
+    pub fn id_name(&self) -> alloc::string::String {
+        alloc::format!("Task({}, {:?})", self.id.as_u64(), self.name)
+    }
+
+    #[inline(always)]
+    pub fn state(&self) -> TaskState {
+        self.state.load(Ordering::Acquire).into()
+    }
+
+    #[inline(always)]
+    pub fn set_state(&self, state: TaskState) {
+        self.state.store(state as u8, Ordering::Release)
+    }
+    
+    #[inline(always)]
+    pub fn is_running(&self) -> bool {
+        matches!(self.state(), TaskState::Running)
+    }
+    
+    #[inline(always)]
+    pub fn is_ready(&self) -> bool {
+        matches!(self.state(), TaskState::Ready)
+    }
+    
+    #[inline(always)]
+    pub fn is_blocked(&self) -> bool {
+        matches!(self.state(), TaskState::Blocked)
+    }
+
+    #[inline(always)]
+    pub fn is_exited(&self) -> bool {
+        matches!(self.state(), TaskState::Exited)
+    }
+    
+    #[inline(always)]
+    pub fn get_priority(&self) -> usize {
+        self.priority.load(Ordering::Relaxed)
+    }
+    
+    #[inline(always)]
+    pub fn set_priority(&self, priority: usize) {
+        self.priority.store(priority, Ordering::Relaxed);
+    }
+    
+    #[inline(always)]
+    pub fn is_init(&self) -> bool {
+        self.is_init
+    }
+
+    #[inline(always)]
+    pub fn is_idle(&self) -> bool {
+        self.is_idle
+    }
+
+    #[inline(always)]
+    pub fn in_wait_queue(&self) -> bool {
+        self.in_wait_queue.load(Ordering::Acquire)
+    }
+
+    #[inline(always)]
+    pub fn set_in_wait_queue(&self, in_wait_queue: bool) {
+        self.in_wait_queue.store(in_wait_queue, Ordering::Release);
+    }
+
+    #[cfg(feature = "irq")]
+    #[inline(always)]
+    pub fn in_timer_list(&self) -> bool {
+        self.in_timer_list.load(Ordering::Acquire)
+    }
+
+    #[cfg(feature = "irq")]
+    #[inline(always)]
+    pub fn set_in_timer_list(&self, in_timer_list: bool) {
+        self.in_timer_list.store(in_timer_list, Ordering::Release);
+    }
+
+    fn join(&self) -> Option<i32> {
+        if !self.is_exited() {
+            self.wait_for_exit.wait();
         }
+        Some(self.exit_code.load(Ordering::Acquire))
     }
 }
 
@@ -419,26 +513,12 @@ pub(crate) enum TaskState {
 
 /// The inner task structure.
 pub struct SyncInner {
-    id: TaskId,
-    name: String,
-    is_idle: bool,
-    is_init: bool,
-
     entry: Option<*mut dyn FnOnce()>,
-    state: AtomicU8,
-    priority: AtomicUsize,
-
-    in_wait_queue: AtomicBool,
-    #[cfg(feature = "irq")]
-    in_timer_list: AtomicBool,
 
     #[cfg(feature = "preempt")]
     need_resched: AtomicBool,
     #[cfg(feature = "preempt")]
     preempt_disable_count: AtomicUsize,
-
-    exit_code: AtomicI32,
-    pub(crate) wait_for_exit: WaitQueue,
 
     kstack: Option<TaskStack>,
     ctx: UnsafeCell<TaskContext>,
@@ -446,9 +526,6 @@ pub struct SyncInner {
     #[cfg(feature = "tls")]
     tls: TlsArea,
 
-    
-    executor_ra: AtomicUsize,
-    executor_sp: AtomicUsize,
     ret_context: UnsafeCell<TaskContext>,
 }
 
@@ -485,19 +562,19 @@ pub(crate) trait UnpinFuture {
     fn poll(&self, cx: &mut Context<'_>) -> Poll<Self::Output>;
 }
 
-impl UnpinFuture for SyncInner {
-    type Output = i32;
+// impl UnpinFuture for SyncInner {
+//     type Output = i32;
     
-    fn poll(&self, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        info!("into poll");
-        self.set_state(TaskState::Running);
-        unsafe {
-            let old_ctx = self.ret_ctx_mut_ptr().as_mut().unwrap();
-            let new_ctx = self.ctx_mut_ptr().as_ref().unwrap();
-            old_ctx.switch_to_receive_exit_value(new_ctx)
-        }
-    }
-}
+//     fn poll(&self, cx: &mut Context<'_>) -> Poll<Self::Output> {
+//         info!("into poll");
+//         self.set_state(TaskState::Running);
+//         unsafe {
+//             let old_ctx = self.ret_ctx_mut_ptr().as_mut().unwrap();
+//             let new_ctx = self.ctx_mut_ptr().as_ref().unwrap();
+//             old_ctx.switch_to_receive_exit_value(new_ctx)
+//         }
+//     }
+// }
 
 pub trait Downcast {
     fn to_task_inner(&self) -> Option<&SyncInner>;
@@ -545,176 +622,41 @@ impl Downcast for AsyncInner {
     }
 }
 
-pub trait TaskInfo {
-    /// Gets the ID of the task.
-    fn id(&self) -> TaskId;
-
-    /// Gets the name of the task.
-    fn name(&self) -> &str;
-
-    /// Get a combined string of the task ID and name.
-    fn id_name(&self) -> alloc::string::String;
-
-    fn state(&self) -> TaskState;
-
-    fn set_state(&self, state: TaskState);
-
-    fn is_running(&self) -> bool;
-
-    fn is_ready(&self) -> bool;
-
-    fn is_blocked(&self) -> bool;
-
-    fn is_exited(&self) -> bool;
-
-    fn get_priority(&self) -> usize;
-
-    fn set_priority(&self, priority: usize);
-
-    fn is_init(&self) -> bool;
-
-    fn is_idle(&self) -> bool;
-
-    fn in_wait_queue(&self) -> bool;
-
-    fn set_in_wait_queue(&self, in_wait_queue: bool);
-
-    #[cfg(feature = "irq")]
-    fn in_timer_list(&self) -> bool;
-
-    #[cfg(feature = "irq")]
-    fn set_in_timer_list(&self, in_timer_list: bool);
-
+pub trait IsAsync {
     fn is_async(&self) -> bool;
 }
 
-impl TaskInfo for SyncInner {
-    /// Gets the ID of the task.
-    fn id(&self) -> TaskId {
-        self.id
-    }
-
-    /// Gets the name of the task.
-    fn name(&self) -> &str {
-        self.name.as_str()
-    }
-
-    /// Get a combined string of the task ID and name.
-    fn id_name(&self) -> alloc::string::String {
-        alloc::format!("Task({}, {:?})", self.id.as_u64(), self.name)
-    }
-
-    
-    fn state(&self) -> TaskState {
-        self.state.load(Ordering::Acquire).into()
-    }
-
-    
-    fn set_state(&self, state: TaskState) {
-        self.state.store(state as u8, Ordering::Release)
-    }
-
-    
-    fn is_running(&self) -> bool {
-        matches!(self.state(), TaskState::Running)
-    }
-
-    
-    fn is_ready(&self) -> bool {
-        matches!(self.state(), TaskState::Ready)
-    }
-
-    
-    fn is_blocked(&self) -> bool {
-        matches!(self.state(), TaskState::Blocked)
-    }
-
-    fn is_exited(&self) -> bool {
-        matches!(self.state(), TaskState::Exited)
-    }
-
-    
-    fn get_priority(&self) -> usize {
-        self.priority.load(Ordering::Relaxed)
-    }
-
-    
-    fn set_priority(&self, priority: usize) {
-        self.priority.store(priority, Ordering::Relaxed);
-    }
-
-    
-    fn is_init(&self) -> bool {
-        self.is_init
-    }
-
-    
-    fn is_idle(&self) -> bool {
-        self.is_idle
-    }
-
-    fn in_wait_queue(&self) -> bool {
-        self.in_wait_queue.load(Ordering::Acquire)
-    }
-
-    fn set_in_wait_queue(&self, in_wait_queue: bool) {
-        self.in_wait_queue.store(in_wait_queue, Ordering::Release);
-    }
-
-    #[cfg(feature = "irq")]
-    fn in_timer_list(&self) -> bool {
-        self.in_timer_list.load(Ordering::Acquire)
-    }
-
-    #[cfg(feature = "irq")]
-    fn set_in_timer_list(&self, in_timer_list: bool) {
-        self.in_timer_list.store(in_timer_list, Ordering::Release);
-    }
-    
+impl IsAsync for SyncInner {
     fn is_async(&self) -> bool {
         false
     }
 }
 
-impl SyncInner {
-    /// Wait for the task to exit, and return the exit code.
-    ///
-    /// It will return immediately if the task has already exited (but not dropped).
-    pub fn join(&self) -> Option<i32> {
-        if !self.is_exited() {
-            self.wait_for_exit.wait();
-        }
-        Some(self.exit_code.load(Ordering::Acquire))
-    }
-}
+// impl SyncInner {
+//     /// Wait for the task to exit, and return the exit code.
+//     ///
+//     /// It will return immediately if the task has already exited (but not dropped).
+//     pub fn join(&self) -> Option<i32> {
+//         if !self.is_exited() {
+//             self.wait_for_exit.wait();
+//         }
+//         Some(self.exit_code.load(Ordering::Acquire))
+//     }
+// }
 
 // private methods
 impl SyncInner {
-    fn new_common(id: TaskId, name: String) -> Self {
+    fn new_common() -> Self {
         Self {
-            id,
-            name,
-            is_idle: false,
-            is_init: false,
             entry: None,
-            state: AtomicU8::new(TaskState::Ready as u8),
-            priority: AtomicUsize::new(1),
-            in_wait_queue: AtomicBool::new(false),
-            #[cfg(feature = "irq")]
-            in_timer_list: AtomicBool::new(false),
             #[cfg(feature = "preempt")]
             need_resched: AtomicBool::new(false),
             #[cfg(feature = "preempt")]
             preempt_disable_count: AtomicUsize::new(0),
-            exit_code: AtomicI32::new(0),
-            wait_for_exit: WaitQueue::new(),
             kstack: None,
             ctx: UnsafeCell::new(TaskContext::new()),
             #[cfg(feature = "tls")]
             tls: TlsArea::alloc(),
-            
-            executor_ra: AtomicUsize::new(0),
-            executor_sp: AtomicUsize::new(0),
             ret_context: UnsafeCell::new(TaskContext::new()),
         }
     }
@@ -724,8 +666,7 @@ impl SyncInner {
     where
         F: FnOnce() + Send + 'static,
     {
-        let mut t = Self::new_common(TaskId::new(), name);
-        debug!("new task: {}", t.id_name());
+        let mut t = Self::new_common();
         let kstack = TaskStack::alloc(align_up_4k(stack_size));
 
         #[cfg(feature = "tls")]
@@ -736,10 +677,25 @@ impl SyncInner {
         t.entry = Some(Box::into_raw(Box::new(entry)));
         t.ctx.get_mut().init(task_entry as usize, kstack.top(), tls);
         t.kstack = Some(kstack);
-        if t.name == "idle" {
-            t.is_idle = true;
+
+        let mut g = GeneralInner {
+            id: TaskId::new(),
+            name,
+            is_idle: false,
+            is_init: false,
+            state: AtomicU8::new(TaskState::Ready as u8),
+            priority: AtomicUsize::new(1),
+            in_wait_queue: AtomicBool::new(false),
+            #[cfg(feature = "irq")]
+            in_timer_list: AtomicBool::new(false),
+            exit_code: AtomicI32::new(0),
+            wait_for_exit: WaitQueue::new(),
+            return_action: UnsafeCell::new(None),
+        };
+        if g.name == "idle" {
+            g.is_idle = true;
         }
-        Arc::new(AxTask::new_sync(t))
+        Arc::new(AxTask::new_sync(t, g))
     }
 
     /// Create a new task with the given entry function and stack size.
@@ -747,9 +703,7 @@ impl SyncInner {
     where
         F: FnOnce() + Send + 'static,
     {
-        let mut t = Self::new_common(TaskId::new(), name);
-        t.is_init = true;
-        debug!("new task: {}", t.id_name());
+        let mut t = Self::new_common();
         let kstack = TaskStack::alloc(align_up_4k(stack_size));
 
         #[cfg(feature = "tls")]
@@ -760,10 +714,25 @@ impl SyncInner {
         t.entry = Some(Box::into_raw(Box::new(entry)));
         t.ctx.get_mut().init(task_entry as usize, kstack.top(), tls);
         t.kstack = Some(kstack);
-        if t.name == "idle" {
-            t.is_idle = true;
+
+        let mut g = GeneralInner {
+            id: TaskId::new(),
+            name,
+            is_idle: false,
+            is_init: true,
+            state: AtomicU8::new(TaskState::Ready as u8),
+            priority: AtomicUsize::new(1),
+            in_wait_queue: AtomicBool::new(false),
+            #[cfg(feature = "irq")]
+            in_timer_list: AtomicBool::new(false),
+            exit_code: AtomicI32::new(0),
+            wait_for_exit: WaitQueue::new(),
+            return_action: UnsafeCell::new(None),
+        };
+        if g.name == "idle" {
+            g.is_idle = true;
         }
-        Arc::new(AxTask::new_sync(t))
+        Arc::new(AxTask::new_sync(t, g))
     }
 
     /// Creates an "init task" using the current CPU states, to use as the
@@ -840,159 +809,56 @@ impl SyncInner {
 impl fmt::Debug for SyncInner {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("TaskInner")
-            .field("id", &self.id)
-            .field("name", &self.name)
-            .field("state", &self.state())
             .finish()
     }
 }
 
 impl Drop for SyncInner {
     fn drop(&mut self) {
-        debug!("task drop: {}", self.id_name());
+        // debug!("task drop: {}", self.id_name());
     }
 }
 
 /// The inner coroutine structure.
 pub struct AsyncInner {
-    id: TaskId,
-    name: String,
-    is_idle: bool,
-    is_init: bool,
-    state: AtomicU8,
-    priority: AtomicUsize,
-
-    in_wait_queue: AtomicBool,
-    #[cfg(feature = "irq")]
-    in_timer_list: AtomicBool,
-
-    pub(crate) exit_code: AtomicI32,
-    pub(crate) wait_for_exit: WaitQueue,
-
     fut: UnsafeCell<Pin<Box<dyn Future<Output = i32> + Send + Sync>>>,
 }
 
-impl AsyncInner {
-    /// Wait for the task to exit, and return the exit code.
-    ///
-    /// It will return immediately if the task has already exited (but not dropped).
-    pub fn join(&self) -> Option<i32> {
-        if !self.is_exited() {
-            self.wait_for_exit.wait();
-        }
-        Some(self.exit_code.load(Ordering::Acquire))
-    }
-}
+// impl AsyncInner {
+//     /// Wait for the task to exit, and return the exit code.
+//     ///
+//     /// It will return immediately if the task has already exited (but not dropped).
+//     pub fn join(&self) -> Option<i32> {
+//         if !self.is_exited() {
+//             self.wait_for_exit.wait();
+//         }
+//         Some(self.exit_code.load(Ordering::Acquire))
+//     }
+// }
 
 unsafe impl Send for AsyncInner { }
 unsafe impl Sync for AsyncInner { }
 
-impl UnpinFuture for AsyncInner {
-    type Output = i32;
+// impl UnpinFuture for AsyncInner {
+//     type Output = i32;
 
-    fn poll(&self, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        self.set_state(TaskState::Running);
-        let res = unsafe { self.fut.get().as_mut().unwrap().as_mut().poll(cx) };
-        match &res {
-            Poll::Pending => {
-                self.set_state(TaskState::Blocked);
-            },
-            Poll::Ready(value) => {
-                self.exit_code.store(*value, Ordering::Release);
-                self.set_state(TaskState::Exited);
-            }
-        }
-        res
-    }
-}
+//     fn poll(&self, cx: &mut Context<'_>) -> Poll<Self::Output> {
+//         self.set_state(TaskState::Running);
+//         let res = unsafe { self.fut.get().as_mut().unwrap().as_mut().poll(cx) };
+//         match &res {
+//             Poll::Pending => {
+//                 self.set_state(TaskState::Blocked);
+//             },
+//             Poll::Ready(value) => {
+//                 self.exit_code.store(*value, Ordering::Release);
+//                 self.set_state(TaskState::Exited);
+//             }
+//         }
+//         res
+//     }
+// }
 
-impl TaskInfo for AsyncInner {
-    /// Gets the ID of the task.
-    fn id(&self) -> TaskId {
-        self.id
-    }
-
-    /// Gets the name of the task.
-    fn name(&self) -> &str {
-        self.name.as_str()
-    }
-
-    /// Get a combined string of the task ID and name.
-    fn id_name(&self) -> alloc::string::String {
-        alloc::format!("Task({}, {:?})", self.id.as_u64(), self.name)
-    }
-
-    
-    fn state(&self) -> TaskState {
-        self.state.load(Ordering::Acquire).into()
-    }
-
-    
-    fn set_state(&self, state: TaskState) {
-        self.state.store(state as u8, Ordering::Release)
-    }
-
-    
-    fn is_running(&self) -> bool {
-        matches!(self.state(), TaskState::Running)
-    }
-
-    
-    fn is_ready(&self) -> bool {
-        matches!(self.state(), TaskState::Ready)
-    }
-
-    
-    fn is_blocked(&self) -> bool {
-        matches!(self.state(), TaskState::Blocked)
-    }
-
-    fn is_exited(&self) -> bool {
-        matches!(self.state(), TaskState::Exited)
-    }
-
-    fn get_priority(&self) -> usize {
-        self.priority.load(Ordering::Relaxed)
-    }
-
-    
-    fn set_priority(&self, priority: usize) {
-        self.priority.store(priority, Ordering::Relaxed);
-    }
-
-    
-    fn is_init(&self) -> bool {
-        self.is_init
-    }
-
-    
-    fn is_idle(&self) -> bool {
-        self.is_idle
-    }
-
-    
-    fn in_wait_queue(&self) -> bool {
-        self.in_wait_queue.load(Ordering::Acquire)
-    }
-
-    
-    fn set_in_wait_queue(&self, in_wait_queue: bool) {
-        self.in_wait_queue.store(in_wait_queue, Ordering::Release);
-    }
-
-    
-    #[cfg(feature = "irq")]
-    fn in_timer_list(&self) -> bool {
-        self.in_timer_list.load(Ordering::Acquire)
-    }
-
-    
-    #[cfg(feature = "irq")]
-    fn set_in_timer_list(&self, in_timer_list: bool) {
-        self.in_timer_list.store(in_timer_list, Ordering::Release);
-    }
-    
-    
+impl IsAsync for AsyncInner {
     fn is_async(&self) -> bool {
         true
     }
@@ -1005,6 +871,9 @@ impl AsyncInner {
         F: Future<Output = i32> + Send + Sync + 'static
     {
         let mut t = Self {
+            fut: UnsafeCell::new(Box::pin(fut))
+        };
+        let g = GeneralInner {
             id: TaskId::new(),
             name,
             is_idle: false,
@@ -1016,9 +885,9 @@ impl AsyncInner {
             in_timer_list: AtomicBool::new(false),
             exit_code: AtomicI32::new(0),
             wait_for_exit: WaitQueue::new(),
-            fut: UnsafeCell::new(Box::pin(fut))
+            return_action: UnsafeCell::new(None),
         };
-        Arc::new(AxTask::new_async(t))
+        Arc::new(AxTask::new_async(t, g))
     }
 }
 

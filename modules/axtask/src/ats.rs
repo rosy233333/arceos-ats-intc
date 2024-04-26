@@ -3,7 +3,7 @@ use ats_intc::AtsIntc;
 use axhal::{arch::TaskContext, cpu::this_cpu_id};
 use lazy_init::LazyInit;
 use spinlock::SpinNoIrq;
-use crate::{spawn_async, task::{AbsTaskInner, AsyncInner, AxTask, TaskInfo, TaskStack, TaskState}, AxTaskRef, CurrentTask, WaitQueue};
+use crate::{spawn_async, task::{AbsTaskInner, AsyncInner, AxTask, IsAsync, TaskStack, TaskState}, AxTaskRef, CurrentTask, WaitQueue};
 use core::task::{ Context, Waker };
 use alloc::{collections::VecDeque, sync::Arc, boxed::Box};
 use core::arch::asm;

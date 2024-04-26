@@ -190,7 +190,7 @@ where
     F: FnOnce() + Send + 'static,
 {
     let task = SyncInner::new(f, name, stack_size);
-    let priority = task.task_inner.get_priority();
+    let priority = task.get_priority();
     let task_ref = task.clone().into_task_ref();
     // let leak = Arc::into_raw(task.clone()); // tempoary solution
     unsafe {
@@ -207,7 +207,7 @@ where
     F: FnOnce() + Send + 'static,
 {
     let task = SyncInner::new_init(f, name, stack_size);
-    let priority = task.task_inner.get_priority();
+    let priority = task.get_priority();
     let task_ref = task.clone().into_task_ref();
     // let leak = Arc::into_raw(task.clone()); // tempoary solution
     unsafe {
@@ -247,7 +247,7 @@ where
     F: Future<Output = i32> + Send + Sync + 'static,
 {
     let task = AsyncInner::new(f, name);
-    let priority = task.task_inner.get_priority();
+    let priority = task.get_priority();
     let task_ref = task.clone().into_task_ref();
     // let leak = Arc::into_raw(task.clone()); // tempoary solution
     unsafe {
