@@ -350,14 +350,14 @@ impl AxTask {
         let inner = self.task_inner.to_task_inner().unwrap();
         self.set_state(TaskState::Exited);
         self.register_return_action(|task| {
-            // if task.is_init() {
-            //     EXITED_TASKS.lock().clear();
-            //     axhal::misc::terminate();
-            // }
+            if task.is_init() {
+                // EXITED_TASKS.lock().clear();
+                axhal::misc::terminate();
+            }
             task.general_inner.wait_for_exit.notify_all_locked(false);
             let inner = task.task_inner.to_task_inner().unwrap();
-            EXITED_TASKS.lock().push_back(task);
-            WAIT_FOR_EXIT.notify_one_locked(false);
+            // EXITED_TASKS.lock().push_back(task);
+            // WAIT_FOR_EXIT.notify_one_locked(false);
         });
         
         unsafe {
