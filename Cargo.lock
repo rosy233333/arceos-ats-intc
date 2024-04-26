@@ -497,6 +497,7 @@ version = "0.1.0"
 dependencies = [
  "axsync",
  "axtask",
+ "log",
  "rand",
  "spinlock",
 ]

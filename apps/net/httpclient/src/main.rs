@@ -30,12 +30,14 @@ fn client() -> io::Result<()> {
     let mut buf = [0; 2048];
     let n = stream.read(&mut buf)?;
     let response = core::str::from_utf8(&buf[..n]).unwrap();
-    println!("{}", response); // longer response need to handle tcp package problems.
+    // println!("{}", response); // longer response need to handle tcp package problems.
     Ok(())
 }
 
 #[cfg_attr(feature = "axstd", no_mangle)]
 fn main() {
     println!("Hello, simple http client!");
-    client().expect("test http client failed");
+    for i in 0 .. 16 {
+        client().expect("test http client failed");
+    }
 }

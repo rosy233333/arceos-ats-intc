@@ -84,7 +84,10 @@ impl<T: ?Sized> Mutex<T> {
                 Ordering::Acquire,
                 Ordering::Relaxed,
             ) {
-                Ok(_) => break,
+                Ok(_) => {
+                    // log::error!("acquire lock: successful");
+                    break;
+                },
                 Err(owner_id) => {
                     assert_ne!(
                         owner_id,
@@ -93,7 +96,9 @@ impl<T: ?Sized> Mutex<T> {
                         current_id
                     );
                     // Wait until the lock looks unlocked before retrying
+                    // log::error!("acquire lock: failed, waiting ...");
                     self.wq.wait_until(|| !self.is_locked());
+                    // log::error!("acquire lock: failed, wait complete");
                 }
             }
         }
@@ -169,7 +174,8 @@ impl<T: ?Sized> Mutex<T> {
             "{} tried to release mutex it doesn't own",
             current_id().unwrap()
         );
-        self.wq.notify_one(true);
+        let notify = self.wq.notify_one(true);
+        // log::error!("release lock, notify task = {}", notify);
     }
 
     /// Returns a mutable reference to the underlying data.

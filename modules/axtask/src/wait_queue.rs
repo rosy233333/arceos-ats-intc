@@ -73,7 +73,7 @@ impl WaitQueue {
         task.set_in_wait_queue(false); // 为了防止任务在返回调度器之前（上下文还未更新）就被唤醒，因此在任务返回调度器后再设置`in_wait_queue`标记。
         self.queue.lock().push_back(task.clone());
         task.clone().sync_block(|task| {
-            task.set_in_wait_queue(true); // 若任务位于队列中，但`in_wait_queue`标记为`false`，则视为不在队列中。
+            task.set_in_wait_queue(true); // 若任务位于队列中，但`in_wait_queue`标记为`false`，则视为不在队列中。如果此时队列要弹出这个任务，则会忙等。因此任务入队和设置标记之间不能间隔太长。
         });
         self.cancel_events(task);
     }
@@ -87,6 +87,7 @@ impl WaitQueue {
     where
         F: Fn() -> bool,
     {
+        // error!("wait_until");
         let task = crate::current().unwrap();
         loop {
             // let mut rq = RUN_QUEUE.lock();
@@ -224,21 +225,17 @@ impl WaitQueue {
         loop {
             // let mut rq = RUN_QUEUE.lock();
             if let Some(task) = self.queue.lock().pop_front() {
-                if task.in_wait_queue() {
-                    task.set_in_wait_queue(false);
-                    // rq.unblock_task(task, resched);
-                    task.set_state(TaskState::Ready);
-                    let priority = task.task_inner.get_priority();
-                    let task_ref = task.into_task_ref();
-                    unsafe {
-                        // let lock = DRIVER_LOCK.lock();
-                        // let driver = ATS_DRIVER.current_ref_raw();
-                        let driver = GLOBAL_ATS_DRIVER.lock();
-                        driver.ps_push(task_ref, priority);
-                    }
-                }
-                else {
-                    self.queue.lock().push_back(task);
+                while !task.in_wait_queue() { }
+                task.set_in_wait_queue(false);
+                // rq.unblock_task(task, resched);
+                task.set_state(TaskState::Ready);
+                let priority = task.task_inner.get_priority();
+                let task_ref = task.into_task_ref();
+                unsafe {
+                    // let lock = DRIVER_LOCK.lock();
+                    // let driver = ATS_DRIVER.current_ref_raw();
+                    let driver = GLOBAL_ATS_DRIVER.lock();
+                    driver.ps_push(task_ref, priority);
                 }
             } else {
                 break;
@@ -255,23 +252,19 @@ impl WaitQueue {
         // let mut rq = RUN_QUEUE.lock();
         let mut wq = self.queue.lock();
         if let Some(index) = wq.iter().position(|t| Arc::ptr_eq(t, task)) {
-            if task.in_wait_queue() {
-                wq.remove(index);
-                task.set_in_wait_queue(false);
-                // rq.unblock_task(wq.remove(index).unwrap(), resched);
-                task.set_state(TaskState::Ready);
-                let task_ref = task.clone().into_task_ref();
-                unsafe {
-                    // let lock = DRIVER_LOCK.lock();
-                    // let driver = ATS_DRIVER.current_ref_raw();
-                    let driver = GLOBAL_ATS_DRIVER.lock();
-                    driver.ps_push(task_ref, task.get_priority());
-                }
-                true
+            while !task.in_wait_queue() { }
+            wq.remove(index);
+            task.set_in_wait_queue(false);
+            // rq.unblock_task(wq.remove(index).unwrap(), resched);
+            task.set_state(TaskState::Ready);
+            let task_ref = task.clone().into_task_ref();
+            unsafe {
+                // let lock = DRIVER_LOCK.lock();
+                // let driver = ATS_DRIVER.current_ref_raw();
+                let driver = GLOBAL_ATS_DRIVER.lock();
+                driver.ps_push(task_ref, task.get_priority());
             }
-            else {
-                false
-            }
+            true
         } else {
             false
         }
@@ -279,24 +272,19 @@ impl WaitQueue {
 
     pub(crate) fn notify_one_locked(&self, resched: bool) -> bool {
         if let Some(task) = self.queue.lock().pop_front() {
-            if task.in_wait_queue() {
-                task.set_in_wait_queue(false);
-                // rq.unblock_task(task, resched);
-                task.set_state(TaskState::Ready);
-                let priority = task.task_inner.get_priority();
-                let task_ref = task.into_task_ref();
-                unsafe {
-                    // let lock = DRIVER_LOCK.lock();
-                    // let driver = ATS_DRIVER.current_ref_raw();
-                    let driver = GLOBAL_ATS_DRIVER.lock();
-                    driver.ps_push(task_ref, priority);
-                }
-                true
+            while !task.in_wait_queue() { }
+            task.set_in_wait_queue(false);
+            // rq.unblock_task(task, resched);
+            task.set_state(TaskState::Ready);
+            let priority = task.task_inner.get_priority();
+            let task_ref = task.into_task_ref();
+            unsafe {
+                // let lock = DRIVER_LOCK.lock();
+                // let driver = ATS_DRIVER.current_ref_raw();
+                let driver = GLOBAL_ATS_DRIVER.lock();
+                driver.ps_push(task_ref, priority);
             }
-            else {
-                self.queue.lock().push_back(task);
-                false
-            }
+            true
         } else {
             false
         }
@@ -304,21 +292,17 @@ impl WaitQueue {
 
     pub(crate) fn notify_all_locked(&self, resched: bool) {
         while let Some(task) = self.queue.lock().pop_front() {
-            if task.in_wait_queue() {
-                task.set_in_wait_queue(false);
-                // rq.unblock_task(task, resched);
-                task.set_state(TaskState::Ready);
-                let priority = task.task_inner.get_priority();
-                let task_ref = task.into_task_ref();
-                unsafe {
-                    // let lock = DRIVER_LOCK.lock();
-                    // let driver = ATS_DRIVER.current_ref_raw();
-                    let driver = GLOBAL_ATS_DRIVER.lock();
-                    driver.ps_push(task_ref, priority);
-                }
-            }
-            else {
-                self.queue.lock().push_back(task);
+            while !task.in_wait_queue() { }
+            task.set_in_wait_queue(false);
+            // rq.unblock_task(task, resched);
+            task.set_state(TaskState::Ready);
+            let priority = task.task_inner.get_priority();
+            let task_ref = task.into_task_ref();
+            unsafe {
+                // let lock = DRIVER_LOCK.lock();
+                // let driver = ATS_DRIVER.current_ref_raw();
+                let driver = GLOBAL_ATS_DRIVER.lock();
+                driver.ps_push(task_ref, priority);
             }
         }
     }

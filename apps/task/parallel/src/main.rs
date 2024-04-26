@@ -14,7 +14,7 @@ use std::{sync::Arc, vec::Vec};
 use std::os::arceos::api::task::{self as api, AxWaitQueueHandle};
 
 const NUM_DATA: usize = 2_000_000;
-const NUM_TASKS: usize = 16;
+const NUM_TASKS: usize = 8;
 
 #[cfg(feature = "axstd")]
 fn barrier() {
@@ -93,19 +93,18 @@ fn main() {
         tasks.push(thread::spawn(move || {
             let left = i * (NUM_DATA / NUM_TASKS);
             let right = (left + (NUM_DATA / NUM_TASKS)).min(NUM_DATA);
-            println!(
-                "part {}: {:?} [{}, {})",
-                i,
-                thread::current().id(),
-                left,
-                right
-            );
+            // println!(
+            //     "part {}: {:?} [{}, {})",
+            //     i,
+            //     thread::current().id(),
+            //     left,
+            //     right
+            // );
 
             let partial_sum: u64 = vec[left..right].iter().map(sqrt).sum();
             // barrier();
-            yield_now();
 
-            println!("part {}: {:?} finished", i, thread::current().id());
+            // println!("part {}: {:?} finished", i, thread::current().id());
             partial_sum
         }));
     }
@@ -114,7 +113,7 @@ fn main() {
     let end_time: std::time::Instant = std::time::Instant::now();
     let used_time = end_time.duration_since(start_time);
     println!("used time = {:?}", used_time);
-    println!("sum = {}", actual);
+    // println!("sum = {}", actual);
     assert_eq!(expect, actual);
 
     println!("Parallel summation tests run OK!");
