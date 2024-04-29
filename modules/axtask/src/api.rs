@@ -122,7 +122,34 @@ pub fn register_irq_handler<F>(irq_num: usize, handler: F) -> bool
 where
     F: Fn() + Send + 'static,
 {
-    let task = SyncInner::new(handler, "".into(), axconfig::TASK_STACK_SIZE);
+    error!("register irq handler 1");
+    let task = SyncInner::new(move || {
+        loop {
+            // error!("into task");
+            // current.register_return_action(move |task| {
+            //     // 处理程序返回后，放回中断队列
+            //     unsafe {
+            //         // let lock = DRIVER_LOCK.lock();
+            //         // let driver = ATS_DRIVER.current_ref_raw();
+            //         error!("register irq handler");
+            //         let driver = GLOBAL_ATS_DRIVER.lock();
+            //         driver.intr_push(irq_num, task.into_task_ref());
+            //     }
+            // });
+            handler();
+            let current = current().unwrap();
+            current.sync_block(move |task| {
+                // 处理程序返回后，放回中断队列
+                unsafe {
+                    // let lock = DRIVER_LOCK.lock();
+                    // let driver = ATS_DRIVER.current_ref_raw();
+                    error!("register irq handler");
+                    let driver = GLOBAL_ATS_DRIVER.lock();
+                    driver.intr_push(irq_num, task.into_task_ref());
+                }
+            });
+        }
+    }, "irq_handler".into(), axconfig::TASK_STACK_SIZE);
     task.set_priority(0);
     unsafe {
         // let lock = DRIVER_LOCK.lock();
@@ -130,15 +157,27 @@ where
         let driver = GLOBAL_ATS_DRIVER.lock();
         driver.intr_push(irq_num, task.into_task_ref());
     }
-    
     true
 }
 
 pub fn register_async_irq_handler<F>(irq_num: usize, handler: F) -> bool
 where
-    F: Future<Output = i32> + Send + Sync + 'static,
+    F: Future<Output = i32> + Send + Sync + Clone + 'static,
 {
-    let task = AsyncInner::new(handler, "".into());
+    let task = AsyncInner::new(async move {
+        loop {
+            handler.clone().await;
+            let current = current().unwrap();
+            current.async_block(move |task| {
+                unsafe {
+                    // let lock = DRIVER_LOCK.lock();
+                    // let driver = ATS_DRIVER.current_ref_raw();
+                    let driver = GLOBAL_ATS_DRIVER.lock();
+                    driver.intr_push(irq_num, task.into_task_ref());
+                }
+            }).await;
+        }
+    }, "".into());
     task.set_priority(0);
     unsafe {
         // let lock = DRIVER_LOCK.lock();

@@ -5,8 +5,10 @@
 #[cfg(feature = "axstd")]
 extern crate axstd as std;
 
+use core::time::Duration;
 use std::io::{self, prelude::*};
 use std::net::{TcpStream, ToSocketAddrs};
+use std::time;
 
 #[cfg(feature = "dns")]
 const DEST: &str = "ident.me:80";
@@ -20,24 +22,30 @@ Host: ident.me\r\n\
 Accept: */*\r\n\
 \r\n";
 
-fn client() -> io::Result<()> {
-    for addr in DEST.to_socket_addrs()? {
-        println!("dest: {} ({})", DEST, addr);
-    }
+fn client() -> io::Result<Duration> {
+    // for addr in DEST.to_socket_addrs()? {
+    //     println!("dest: {} ({})", DEST, addr);
+    // }
 
+    let start_time = time::Instant::now();
     let mut stream = TcpStream::connect(DEST)?;
     stream.write_all(REQUEST.as_bytes())?;
     let mut buf = [0; 2048];
     let n = stream.read(&mut buf)?;
-    let response = core::str::from_utf8(&buf[..n]).unwrap();
+    let end_time = time::Instant::now();
+    // let response = core::str::from_utf8(&buf[..n]).unwrap();
     // println!("{}", response); // longer response need to handle tcp package problems.
-    Ok(())
+    Ok(end_time - start_time)
 }
 
 #[cfg_attr(feature = "axstd", no_mangle)]
 fn main() {
     println!("Hello, simple http client!");
+    let mut results: Vec<Duration> = Vec::new();
     for i in 0 .. 16 {
-        client().expect("test http client failed");
+        results.push(client().expect("test http client failed"));
+    }
+    for result in results {
+        println!("{}", result.as_micros());
     }
 }

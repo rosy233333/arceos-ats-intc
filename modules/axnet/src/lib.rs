@@ -35,6 +35,7 @@ cfg_if::cfg_if! {
 use core::future::Future;
 use core::future::Pending;
 use core::task::Poll;
+use core::time::Duration;
 
 pub use self::net_impl::TcpSocket;
 pub use self::net_impl::UdpSocket;
@@ -52,8 +53,12 @@ use net_impl::poll_interfaces_return_delay;
 use net_impl::poll_interfaces_return_delay_async;
 pub use net_impl::poll_interfaces;
 use net_impl::poll_interfaces_async;
+#[cfg(feature = "block_queue")]
+use net_impl::BLOCK_QUEUE;
+#[cfg(any(feature = "interrupt", feature = "interrupt_async"))]
+use net_impl::POLL_TASK;
 
-const VIRTIO_NET_IRQ_NUM: usize = 7;
+const VIRTIO_NET_IRQ_NUM: usize = 8;
 
 /// Initializes the network subsystem by NIC devices.
 pub fn init_network(mut net_devs: AxDeviceContainer<AxNetDevice>) {
@@ -66,17 +71,21 @@ pub fn init_network(mut net_devs: AxDeviceContainer<AxNetDevice>) {
     #[cfg(feature = "poll")]
     spawn(|| {
         loop {
-            let default_delay = core::time::Duration::from_secs(1);
-            let delay = poll_interfaces_return_delay();
-            match delay {
-                Some(dur) => {
-                    // error!("delay is sone");
-                    sleep(dur.into());
-                },
-                None => {
-                    // error!("delay is none");
-                    sleep(default_delay);
-                },
+            // let default_delay = core::time::Duration::from_secs(1);
+            // let delay = poll_interfaces_return_delay();
+            // match delay {
+            //     Some(dur) => {
+            //         // error!("delay is sone");
+            //         sleep(dur.into());
+            //     },
+            //     None => {
+            //         // error!("delay is none");
+            //         sleep(default_delay);
+            //     },
+            // }
+            if poll_interfaces() {
+                #[cfg(feature = "block_queue")]
+                BLOCK_QUEUE.notify_all(true);
             }
         }
     });
@@ -84,17 +93,21 @@ pub fn init_network(mut net_devs: AxDeviceContainer<AxNetDevice>) {
     #[cfg(feature = "poll_async")]
     spawn_async(async {
         loop {
-            let default_delay = core::time::Duration::from_secs(1);
-            let delay = poll_interfaces_return_delay_async().await;
-            match delay {
-                Some(dur) => {
-                    // error!("delay is sone");
-                    async_sleep(dur.into()).await;
-                },
-                None => {
-                    // error!("delay is none");
-                    async_sleep(default_delay).await;
-                },
+            // let default_delay = core::time::Duration::from_secs(1);
+            // let delay = poll_interfaces_return_delay_async().await;
+            // match delay {
+            //     Some(dur) => {
+            //         // error!("delay is sone");
+            //         async_sleep(dur.into()).await;
+            //     },
+            //     None => {
+            //         // error!("delay is none");
+            //         async_sleep(default_delay).await;
+            //     },
+            // }
+            if poll_interfaces_async().await {
+                #[cfg(feature = "block_queue")]
+                BLOCK_QUEUE.notify_all(true);
             }
         }
     });
@@ -103,26 +116,48 @@ pub fn init_network(mut net_devs: AxDeviceContainer<AxNetDevice>) {
 
     #[cfg(feature = "interrupt")]
     {
-        fn net_irq_handler() {
-            poll_interfaces();
-            register_irq_handler(VIRTIO_NET_IRQ_NUM, net_irq_handler);
-        }
-        register_irq_handler(VIRTIO_NET_IRQ_NUM, net_irq_handler);
+        spawn(|| {
+            loop {
+                // POLL_TASK.wait_timeout(Duration::from_millis(1));
+                POLL_TASK.wait();
+                // error!("poll task");
+                if poll_interfaces() {
+                    #[cfg(feature = "block_queue")]
+                    BLOCK_QUEUE.notify_all(true);
+                }
+            }
+        }); // poll task
+        register_irq_handler(VIRTIO_NET_IRQ_NUM, || {
+            // error!("irq handler");
+            POLL_TASK.notify_all(false);
+            // error!("irq handler end");
+        });
     }
 
     #[cfg(feature = "interrupt_async")]
     {
-        struct AsyncNetIrqHandler { };
+        spawn_async(async {
+            loop {
+                POLL_TASK.wait_async().await;
+                if poll_interfaces_async().await {
+                    #[cfg(feature = "block_queue")]
+                    BLOCK_QUEUE.notify_all(true);
+                }
+            }
+            0
+        });
 
-        impl Future for AsyncNetIrqHandler {
+        #[derive(Clone)]
+        struct AsyncHandler { }
+        impl Future for AsyncHandler {
             type Output = i32;
         
-            fn poll(self: core::pin::Pin<&mut Self>, cx: &mut core::task::Context<'_>) -> core::task::Poll<Self::Output> {
-                poll_interfaces_async().await;
-                register_async_irq_handler(VIRTIO_NET_IRQ_NUM, AsyncNetIrqHandler { });
-                Poll::Pending
+            fn poll(self: core::pin::Pin<&mut Self>, cx: &mut core::task::Context<'_>) -> Poll<Self::Output> {
+                POLL_TASK.notify_all(false);
+                Poll::Ready(0)
             }
         }
-        register_async_irq_handler(VIRTIO_NET_IRQ_NUM, AsyncNetIrqHandler { });  
+
+        register_async_irq_handler(VIRTIO_NET_IRQ_NUM, AsyncHandler { });  
     }
 }

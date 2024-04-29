@@ -12,6 +12,10 @@ use smoltcp::wire::{IpEndpoint, IpListenEndpoint};
 
 use super::addr::{from_core_sockaddr, into_core_sockaddr, is_unspecified, UNSPECIFIED_ENDPOINT};
 use super::{SocketSetWrapper, ETH0, LISTEN_TABLE, SOCKET_SET};
+#[cfg(feature = "block_queue")]
+use super::BLOCK_QUEUE;
+#[cfg(any(feature = "interrupt", feature = "interrupt_async"))]
+use super::POLL_TASK;
 
 // State transitions:
 // CLOSED -(connect)-> BUSY -> CONNECTING -> CONNECTED -(shutdown)-> BUSY -> CLOSED
@@ -482,10 +486,23 @@ impl TcpSocket {
             f()
         } else {
             loop {
+                #[cfg(not(feature = "block_queue"))]
                 SOCKET_SET.poll_interfaces();
                 match f() {
                     Ok(t) => return Ok(t),
-                    Err(AxError::WouldBlock) => axtask::yield_now(),
+                    Err(AxError::WouldBlock) => {
+                        #[cfg(not(feature = "block_queue"))]
+                        axtask::yield_now();
+                        #[cfg(feature = "block_queue")]
+                        {
+                            #[cfg(any(feature = "poll", feature = "poll_async"))]
+                            BLOCK_QUEUE.wait(); // 执行poll的任务始终不阻塞，因此不需唤醒
+                            #[cfg(any(feature = "interrupt", feature = "interrupt_async"))]
+                            BLOCK_QUEUE.wait_and(|_| {
+                                POLL_TASK.notify_all(false);
+                            }); // 执行poll的任务只会在中断时唤醒，因此在发送数据时需要增加由任务主动唤醒的途径
+                        }
+                    },
                     Err(e) => return Err(e),
                 }
             }

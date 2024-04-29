@@ -51,7 +51,7 @@ const CONTENT: &str = r#"<html>
 macro_rules! info {
     ($($arg:tt)*) => {
         match option_env!("LOG") {
-            Some("info") | Some("debug") | Some("trace") | Some("error") => {
+            Some("info") | Some("debug") | Some("trace") => {
                 print!("[INFO] {}\n", format_args!($($arg)*));
             }
             _ => {}

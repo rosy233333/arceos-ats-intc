@@ -77,55 +77,58 @@ impl Ats {
             info!("  after ftask");
             match ats_task {
                 Some(task_ref) => {
-                        // error!("  ftask: Some");
-                        let task: Arc<AxTask> = unsafe { AxTask::from_task_ref(task_ref) };
-                        // error!("  fetch task: {}.", task.id_name());
-                        unsafe {
-                            // let ct_lock = CURRENT_TASKS.lock();
-                            // ct_lock[cpu_id].set_current(Some(task.clone()));
-                            CURRENT_TASKS.current_ref_raw().set_current(Some(task.clone()));
+                    // error!("  ftask: Some");
+                    let task: Arc<AxTask> = unsafe { AxTask::from_task_ref(task_ref) };
+                    // error!("  fetch task: {}.", task.id_name());
+                    if task.is_running() {
+                        continue;
+                    } // 防止存储在多处的任务被多重唤醒
+                    task.set_state(TaskState::Running);
+                    unsafe {
+                        // let ct_lock = CURRENT_TASKS.lock();
+                        // ct_lock[cpu_id].set_current(Some(task.clone()));
+                        CURRENT_TASKS.current_ref_raw().set_current(Some(task.clone()));
+                    }
+                    let poll_result = task.poll(&mut Context::from_waker(&Waker::from(task.clone())));
+                    unsafe {
+                        // let ct_lock = CURRENT_TASKS.lock();
+                        // ct_lock[cpu_id].set_current(None);
+                        CURRENT_TASKS.current_ref_raw().set_current(None);
+                    }
+                    // match poll_result { 
+                    //     Poll::Ready(value) => {
+                    //         // if task.is_async() {
+                    //         //     let inner = task.inner.to_async_task_inner().unwrap();
+                    //         //     inner.wait_for_exit.notify_all(false);
+                    //         // }
+                    //         // else {
+                    //         //     let inner = task.inner.to_task_inner().unwrap();
+                    //         //     inner.wait_for_exit.notify_all(false);
+                    //         // }
+                    //         info!("  task return {}.", value);
+                    //     },
+                    //     Poll::Pending => {
+                    //         // 对于yield的情况，将task放回调度器
+                    //         if task.is_ready() {
+                    //             let priority = task.get_priority();
+                    //             let task_ref = task.into_task_ref();
+                    //             unsafe {
+                    //                 // let lock = DRIVER_LOCK.lock();
+                    //                 // let driver = ATS_DRIVER.current_ref_raw();
+                    //                 let driver = GLOBAL_ATS_DRIVER.lock();
+                    //                 driver.ps_push(task_ref, priority);
+                    //             }
+                    //         }
+                    //         info!("  task not finished.");
+                    //     },
+                    // }
+                    unsafe {
+                        let action_option = task.general_inner.return_action.get();
+                        match (&mut *action_option).take() {
+                            Some(action) => { Box::from_raw(action)(task); },
+                            None => {},
                         }
-                        task.set_state(TaskState::Running);
-                        let poll_result = task.poll(&mut Context::from_waker(&Waker::from(task.clone())));
-                        unsafe {
-                            // let ct_lock = CURRENT_TASKS.lock();
-                            // ct_lock[cpu_id].set_current(None);
-                            CURRENT_TASKS.current_ref_raw().set_current(None);
-                        }
-                        // match poll_result { 
-                        //     Poll::Ready(value) => {
-                        //         // if task.is_async() {
-                        //         //     let inner = task.inner.to_async_task_inner().unwrap();
-                        //         //     inner.wait_for_exit.notify_all(false);
-                        //         // }
-                        //         // else {
-                        //         //     let inner = task.inner.to_task_inner().unwrap();
-                        //         //     inner.wait_for_exit.notify_all(false);
-                        //         // }
-                        //         info!("  task return {}.", value);
-                        //     },
-                        //     Poll::Pending => {
-                        //         // 对于yield的情况，将task放回调度器
-                        //         if task.is_ready() {
-                        //             let priority = task.get_priority();
-                        //             let task_ref = task.into_task_ref();
-                        //             unsafe {
-                        //                 // let lock = DRIVER_LOCK.lock();
-                        //                 // let driver = ATS_DRIVER.current_ref_raw();
-                        //                 let driver = GLOBAL_ATS_DRIVER.lock();
-                        //                 driver.ps_push(task_ref, priority);
-                        //             }
-                        //         }
-                        //         info!("  task not finished.");
-                        //     },
-                        // }
-                        unsafe {
-                            let action_option = task.general_inner.return_action.get();
-                            match (&mut *action_option).take() {
-                                Some(action) => { Box::from_raw(action)(task); },
-                                None => {},
-                            }
-                        }
+                    }
                 },
                 None => {
                     // info!("  ftask: None");

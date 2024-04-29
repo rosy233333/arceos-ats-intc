@@ -78,6 +78,53 @@ impl WaitQueue {
         self.cancel_events(task);
     }
 
+    pub async fn wait_async(&self) {
+        // RUN_QUEUE.lock().block_current(|task| {
+        //     task.set_in_wait_queue(true);
+        //     self.queue.lock().push_back(task)
+        // });
+        let task = crate::current().unwrap();
+        task.set_in_wait_queue(false); // 为了防止任务在返回调度器之前（上下文还未更新）就被唤醒，因此在任务返回调度器后再设置`in_wait_queue`标记。
+        self.queue.lock().push_back(task.clone());
+        task.clone().async_block(|task| {
+            task.set_in_wait_queue(true); // 若任务位于队列中，但`in_wait_queue`标记为`false`，则视为不在队列中。如果此时队列要弹出这个任务，则会忙等。因此任务入队和设置标记之间不能间隔太长。
+        }).await;
+        self.cancel_events(task);
+    }
+
+    // 将任务放入等待队列之后，在Executor上下文中执行额外动作
+    pub fn wait_and<F>(&self, return_action: F)
+    where F: FnOnce(AxTaskRef) + Send + Sync + 'static {
+        // RUN_QUEUE.lock().block_current(|task| {
+        //     task.set_in_wait_queue(true);
+        //     self.queue.lock().push_back(task)
+        // });
+        let task = crate::current().unwrap();
+        task.set_in_wait_queue(false);
+        self.queue.lock().push_back(task.clone());
+        task.clone().sync_block(|task| {
+            task.set_in_wait_queue(true); 
+            return_action(task);
+        });
+        self.cancel_events(task);
+    }
+
+    pub async fn wait_async_and<F>(&self, return_action: F)
+    where F: FnOnce(AxTaskRef) + Send + Sync + 'static {
+        // RUN_QUEUE.lock().block_current(|task| {
+        //     task.set_in_wait_queue(true);
+        //     self.queue.lock().push_back(task)
+        // });
+        let task = crate::current().unwrap();
+        task.set_in_wait_queue(false);
+        self.queue.lock().push_back(task.clone());
+        task.clone().async_block(|task| {
+            task.set_in_wait_queue(true);
+            return_action(task);
+        }).await;
+        self.cancel_events(task);
+    }
+
     /// Blocks the current task and put it into the wait queue, until the given
     /// `condition` becomes true.
     ///

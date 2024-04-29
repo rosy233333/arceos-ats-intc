@@ -67,6 +67,8 @@ impl<H: Hal, T: Transport, const QS: usize> VirtIoNetDev<H, T, QS> {
             dev.free_tx_bufs.push(tx_buf);
         }
 
+        dev.inner.enable_interrupts();
+
         // 3. Return the driver instance.
         Ok(dev)
     }
@@ -139,6 +141,9 @@ impl<H: Hal, T: Transport, const QS: usize> NetDriverOps for VirtIoNetDev<H, T, 
             // Recycle the buffer.
             self.free_tx_bufs.push(tx_buf);
         }
+
+        self.inner.ack_interrupt();
+
         Ok(())
     }
 
@@ -168,6 +173,8 @@ impl<H: Hal, T: Transport, const QS: usize> NetDriverOps for VirtIoNetDev<H, T, 
             };
             rx_buf.set_header_len(hdr_len);
             rx_buf.set_packet_len(pkt_len);
+
+            self.inner.ack_interrupt();
 
             Ok(rx_buf.into_buf_ptr())
         } else {

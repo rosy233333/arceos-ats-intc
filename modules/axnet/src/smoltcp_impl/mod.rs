@@ -6,12 +6,14 @@ mod tcp;
 mod udp;
 
 use alloc::vec;
+use axtask::WaitQueue;
 use core::cell::RefCell;
+use core::mem::ManuallyDrop;
 use core::ops::DerefMut;
 
 use axdriver::prelude::*;
 use axhal::time::{current_time_nanos, NANOS_PER_MICROS};
-use axsync::Mutex;
+use axsync::{Mutex, MutexGuard};
 use driver_net::{DevError, NetBufPtr};
 use lazy_init::LazyInit;
 use smoltcp::iface::{Config, Interface, SocketHandle, SocketSet};
@@ -53,6 +55,11 @@ const LISTEN_QUEUE_SIZE: usize = 512;
 static LISTEN_TABLE: LazyInit<ListenTable> = LazyInit::new();
 static SOCKET_SET: LazyInit<SocketSetWrapper> = LazyInit::new();
 static ETH0: LazyInit<InterfaceWrapper> = LazyInit::new();
+
+#[cfg(feature = "block_queue")]
+pub(crate) static BLOCK_QUEUE: WaitQueue = WaitQueue::new();
+#[cfg(any(feature = "interrupt", feature = "interrupt_async"))]
+pub(crate) static POLL_TASK: WaitQueue = WaitQueue::new();
 
 struct SocketSetWrapper<'a>(Mutex<SocketSet<'a>>);
 
@@ -119,12 +126,12 @@ impl<'a> SocketSetWrapper<'a> {
         f(socket)
     }
 
-    pub fn poll_interfaces(&self) {
-        ETH0.poll(&self.0);
+    pub fn poll_interfaces(&self) -> bool {
+        ETH0.poll(&self.0)
     }
 
-    pub async fn poll_interfaces_async(&'static self) {
-        ETH0.poll_async(&self.0).await;
+    pub async fn poll_interfaces_async(&'static self) -> bool {
+        ETH0.poll_async(&self.0).await
     }
 
     pub fn poll_interface_return_delay(&self) -> Option<smoltcp::time::Duration> {
@@ -184,23 +191,24 @@ impl InterfaceWrapper {
         };
     }
 
-    pub fn poll(&self, sockets: &Mutex<SocketSet>) {
+    pub fn poll(&self, sockets: &Mutex<SocketSet>) -> bool {
         let mut dev = self.dev.lock();
         let mut iface = self.iface.lock();
         let mut sockets = sockets.lock();
         let timestamp = Self::current_time();
-        iface.poll(timestamp, dev.deref_mut(), &mut sockets);
+        iface.poll(timestamp, dev.deref_mut(), &mut sockets)
     }
 
-    pub async fn poll_async(&'static self, sockets: &'static Mutex<SocketSet<'_>>) {
-        let mut dev: axsync::MutexGuard<'static, DeviceWrapper> = self.dev.lock_async().await;
-        let mut iface: axsync::MutexGuard<'static, Interface> = self.iface.lock_async().await;
-        let mut sockets: axsync::MutexGuard<'static, SocketSet<'_>> = sockets.lock_async().await;
+    pub async fn poll_async(&'static self, sockets: &'static Mutex<SocketSet<'_>>) -> bool {
+        let mut dev: ManuallyDrop<MutexGuard<'static, DeviceWrapper>> = ManuallyDrop::new(self.dev.lock_async().await);
+        let mut iface: ManuallyDrop<MutexGuard<'static, Interface>> = ManuallyDrop::new(self.iface.lock_async().await);
+        let mut sockets: ManuallyDrop<MutexGuard<'static, SocketSet<'_>>> = ManuallyDrop::new(sockets.lock_async().await);
         let timestamp = Self::current_time();
-        iface.poll(timestamp, dev.deref_mut(), &mut sockets);
-        drop(sockets);
-        drop(iface);
-        drop(dev);
+        let result = iface.poll(timestamp, dev.deref_mut().deref_mut(), &mut sockets);
+        let _ = ManuallyDrop::into_inner(sockets);
+        let _ = ManuallyDrop::into_inner(iface);
+        let _ = ManuallyDrop::into_inner(dev);
+        result
     }
 
     pub fn poll_delay(&self, sockets: &Mutex<SocketSet>) -> Option<smoltcp::time::Duration>{
@@ -211,12 +219,12 @@ impl InterfaceWrapper {
     }
 
     pub async fn poll_delay_async(&'static self, sockets: &'static Mutex<SocketSet<'_>>) -> Option<smoltcp::time::Duration>{
-        let mut iface: axsync::MutexGuard<'static, Interface> = self.iface.lock_async().await;
-        let mut sockets: axsync::MutexGuard<'static, SocketSet<'_>> = sockets.lock_async().await;
+        let mut iface: ManuallyDrop<MutexGuard<'static, Interface>> = ManuallyDrop::new(self.iface.lock_async().await);
+        let mut sockets: ManuallyDrop<MutexGuard<'static, SocketSet<'_>>> = ManuallyDrop::new(sockets.lock_async().await);
         let timestamp = Self::current_time();
         let res = iface.poll_delay(timestamp, &mut sockets);
-        drop(sockets);
-        drop(iface);
+        let _ = ManuallyDrop::into_inner(sockets);
+        let _ = ManuallyDrop::into_inner(iface);
         res
     }
 }
@@ -338,12 +346,12 @@ fn snoop_tcp_packet(buf: &[u8], sockets: &mut SocketSet<'_>) -> Result<(), smolt
 ///
 /// It may receive packets from the NIC and process them, and transmit queued
 /// packets to the NIC.
-pub fn poll_interfaces() {
-    SOCKET_SET.poll_interfaces();
+pub fn poll_interfaces() -> bool {
+    SOCKET_SET.poll_interfaces()
 }
 
-pub async fn poll_interfaces_async() {
-    SOCKET_SET.poll_interfaces_async().await;
+pub async fn poll_interfaces_async() -> bool {
+    SOCKET_SET.poll_interfaces_async().await
 }
 
 pub fn poll_interfaces_return_delay() -> Option<smoltcp::time::Duration> {
