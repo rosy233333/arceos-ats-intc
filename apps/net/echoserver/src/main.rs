@@ -32,6 +32,7 @@ fn echo_server(mut r_stream: TcpStream) -> io::Result<()> {
     loop {
         let n = r_stream.read(&mut buf)?;
         if n == 0 {
+            r_stream.shutdown()?;
             return Ok(());
         }
         r_stream.write_all(&buf)?;
