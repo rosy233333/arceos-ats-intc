@@ -27,7 +27,7 @@ fn reverse(buf: &[u8]) -> Vec<u8> {
 
 // fn echo_server(mut r_stream: TcpStream, mut w_stream: TcpStream) -> io::Result<()> {
 fn echo_server(mut r_stream: TcpStream) -> io::Result<()> {
-    const FRAME_SIZE : usize = 512;
+    const FRAME_SIZE : usize = 1024;
     let mut buf = [0u8; FRAME_SIZE];
     loop {
         let n = r_stream.read(&mut buf)?;

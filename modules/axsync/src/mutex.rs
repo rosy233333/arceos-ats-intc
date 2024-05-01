@@ -66,7 +66,7 @@ impl<T: ?Sized> Mutex<T> {
     /// the instant it is called. Do not use it for synchronization purposes. However, it may be useful as a heuristic.
     #[inline(always)]
     pub fn is_locked(&self) -> bool {
-        self.owner_id.load(Ordering::Relaxed) != 0
+        self.owner_id.load(Ordering::SeqCst) != 0
     }
 
     /// Locks the [`Mutex`] and returns a guard that permits access to the inner data.
@@ -74,19 +74,30 @@ impl<T: ?Sized> Mutex<T> {
     /// The returned value may be dereferenced for data access
     /// and the lock will be dropped when the guard falls out of scope.
     pub fn lock(&self) -> MutexGuard<T> {
+        // log::error!("into lock");
         let current_id = current_id().unwrap();
         loop {
             // Can fail to lock even if the spinlock is not locked. May be more efficient than `try_lock`
             // when called in a loop.
-            match self.owner_id.compare_exchange_weak(
+            // match self.owner_id.compare_exchange_weak(
+            //     0,
+            //     current_id,
+            //     Ordering::Acquire,
+            //     Ordering::Relaxed,
+            // ) {
+            match self.owner_id.compare_exchange(
                 0,
                 current_id,
-                Ordering::Acquire,
-                Ordering::Relaxed,
+                Ordering::SeqCst,
+                Ordering::SeqCst,
             ) {
                 Ok(_) => {
-                    // log::error!("acquire lock: successful");
+                    log::error!("acquire lock successful");
                     break;
+                    // return MutexGuard {
+                    //     lock: self,
+                    //     data: unsafe { &mut *self.data.get() },
+                    // };
                 },
                 Err(owner_id) => {
                     assert_ne!(
@@ -95,6 +106,7 @@ impl<T: ?Sized> Mutex<T> {
                         "{} tried to acquire mutex it already owns.",
                         current_id
                     );
+                    log::error!("owner id: {}", owner_id);
                     // Wait until the lock looks unlocked before retrying
                     // log::error!("acquire lock: failed, waiting ...");
                     self.wq.wait_until(|| !self.is_locked());
@@ -102,6 +114,7 @@ impl<T: ?Sized> Mutex<T> {
                 }
             }
         }
+        // unreachable!("mutex.rs:116");
         MutexGuard {
             lock: self,
             data: unsafe { &mut *self.data.get() },

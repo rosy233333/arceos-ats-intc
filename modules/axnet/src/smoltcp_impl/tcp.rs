@@ -134,6 +134,7 @@ impl TcpSocket {
             let iface = &ETH0.iface;
             let (local_endpoint, remote_endpoint) = SOCKET_SET
                 .with_socket_mut::<tcp::Socket, _, _>(handle, |socket| {
+                    error!("try to get sockets lock");
                     socket
                         .connect(iface.lock().context(), remote_endpoint, bound_endpoint)
                         .or_else(|e| match e {
@@ -144,6 +145,7 @@ impl TcpSocket {
                                 ax_err!(ConnectionRefused, "socket connect() failed")
                             }
                         })?;
+                    error!("release sockets lock");
                     Ok((
                         socket.local_endpoint().unwrap(),
                         socket.remote_endpoint().unwrap(),

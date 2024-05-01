@@ -10,6 +10,7 @@ use axtask::WaitQueue;
 use core::cell::RefCell;
 use core::mem::ManuallyDrop;
 use core::ops::DerefMut;
+use core::sync;
 
 use axdriver::prelude::*;
 use axhal::time::{current_time_nanos, NANOS_PER_MICROS};
@@ -103,27 +104,36 @@ impl<'a> SocketSetWrapper<'a> {
     }
 
     pub fn add<T: AnySocket<'a>>(&self, socket: T) -> SocketHandle {
+        error!("try to get sockets lock");
         let handle = self.0.lock().add(socket);
         debug!("socket {}: created", handle);
-        handle
+        let res = handle;
+        error!("release sockets lock");
+        res
     }
 
     pub fn with_socket<T: AnySocket<'a>, R, F>(&self, handle: SocketHandle, f: F) -> R
     where
         F: FnOnce(&T) -> R,
     {
+        error!("try to get sockets lock");
         let set = self.0.lock();
         let socket = set.get(handle);
-        f(socket)
+        let res = f(socket);
+        error!("release sockets lock");
+        res
     }
 
     pub fn with_socket_mut<T: AnySocket<'a>, R, F>(&self, handle: SocketHandle, f: F) -> R
     where
         F: FnOnce(&mut T) -> R,
     {
+        error!("try to get sockets lock");
         let mut set = self.0.lock();
         let socket = set.get_mut(handle);
-        f(socket)
+        let res = f(socket);
+        error!("release sockets lock");
+        res
     }
 
     pub fn poll_interfaces(&self) -> bool {
@@ -145,8 +155,10 @@ impl<'a> SocketSetWrapper<'a> {
     }
 
     pub fn remove(&self, handle: SocketHandle) {
+        error!("try to get sockets lock");
         self.0.lock().remove(handle);
         debug!("socket {}: destroyed", handle);
+        error!("release sockets lock");
     }
 }
 
@@ -178,25 +190,37 @@ impl InterfaceWrapper {
     }
 
     pub fn setup_ip_addr(&self, ip: IpAddress, prefix_len: u8) {
+        error!("try to get iface lock");
         let mut iface = self.iface.lock();
         iface.update_ip_addrs(|ip_addrs| {
             ip_addrs.push(IpCidr::new(ip, prefix_len)).unwrap();
         });
+        error!("release iface lock");
     }
 
     pub fn setup_gateway(&self, gateway: IpAddress) {
+        error!("try to get iface lock");
         let mut iface = self.iface.lock();
         match gateway {
             IpAddress::Ipv4(v4) => iface.routes_mut().add_default_ipv4_route(v4).unwrap(),
         };
+        error!("release iface lock");
     }
 
     pub fn poll(&self, sockets: &Mutex<SocketSet>) -> bool {
+        error!("try to get dev lock");
         let mut dev = self.dev.lock();
+        error!("try to get iface lock");
+        sync::atomic::compiler_fence(sync::atomic::Ordering::SeqCst);
         let mut iface = self.iface.lock();
+        error!("try to get sockets lock");
+        sync::atomic::compiler_fence(sync::atomic::Ordering::SeqCst);
         let mut sockets = sockets.lock();
+        error!("get all locks");
         let timestamp = Self::current_time();
-        iface.poll(timestamp, dev.deref_mut(), &mut sockets)
+        let res = iface.poll(timestamp, dev.deref_mut(), &mut sockets);
+        error!("release all locks");
+        res
     }
 
     pub async fn poll_async(&'static self, sockets: &'static Mutex<SocketSet<'_>>) -> bool {
@@ -212,10 +236,16 @@ impl InterfaceWrapper {
     }
 
     pub fn poll_delay(&self, sockets: &Mutex<SocketSet>) -> Option<smoltcp::time::Duration>{
+        error!("try to get iface lock");
         let mut iface = self.iface.lock();
+        sync::atomic::compiler_fence(sync::atomic::Ordering::SeqCst);
+        error!("try to get sockets lock");
         let mut sockets = sockets.lock();
+        error!("get all locks");
         let timestamp = Self::current_time();
-        iface.poll_delay(timestamp, &mut sockets)
+        let res = iface.poll_delay(timestamp, &mut sockets);
+        error!("release all locks");
+        res
     }
 
     pub async fn poll_delay_async(&'static self, sockets: &'static Mutex<SocketSet<'_>>) -> Option<smoltcp::time::Duration>{
