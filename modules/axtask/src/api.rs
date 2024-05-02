@@ -122,7 +122,7 @@ pub fn register_irq_handler<F>(irq_num: usize, handler: F) -> bool
 where
     F: Fn() + Send + 'static,
 {
-    error!("register irq handler 1");
+    // error!("register irq handler 1");
     let task = SyncInner::new(move || {
         loop {
             // error!("into task");
@@ -143,7 +143,7 @@ where
                 unsafe {
                     // let lock = DRIVER_LOCK.lock();
                     // let driver = ATS_DRIVER.current_ref_raw();
-                    error!("register irq handler");
+                    // error!("register irq handler");
                     let driver = GLOBAL_ATS_DRIVER.lock();
                     driver.intr_push(irq_num, task.into_task_ref());
                 }
@@ -336,6 +336,11 @@ pub fn set_priority(prio: isize) -> bool {
 pub fn yield_now() {
     let current_task = current().unwrap();
     current_task.sync_yield();
+}
+
+pub async fn yield_now_async() {
+    let current_task = current().unwrap();
+    current_task.async_yield().await;
 }
 
 /// Current task is going to sleep for the given duration.

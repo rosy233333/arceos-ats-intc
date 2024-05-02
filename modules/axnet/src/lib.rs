@@ -34,6 +34,7 @@ cfg_if::cfg_if! {
 
 use core::future::Future;
 use core::future::Pending;
+use core::sync::atomic::Ordering;
 use core::task::Poll;
 use core::time::Duration;
 
@@ -83,10 +84,12 @@ pub fn init_network(mut net_devs: AxDeviceContainer<AxNetDevice>) {
             //         sleep(default_delay);
             //     },
             // }
+            // error!("poll thread running...");
             if poll_interfaces() {
                 #[cfg(feature = "block_queue")]
                 BLOCK_QUEUE.notify_all(true);
             }
+            // axtask::yield_now();
         }
     });
 
@@ -109,6 +112,7 @@ pub fn init_network(mut net_devs: AxDeviceContainer<AxNetDevice>) {
                 #[cfg(feature = "block_queue")]
                 BLOCK_QUEUE.notify_all(true);
             }
+            // axtask::yield_now_async().await;
         }
     });
 
@@ -121,15 +125,17 @@ pub fn init_network(mut net_devs: AxDeviceContainer<AxNetDevice>) {
                 // POLL_TASK.wait_timeout(Duration::from_millis(1));
                 POLL_TASK.wait();
                 // error!("poll task");
-                if poll_interfaces() {
-                    #[cfg(feature = "block_queue")]
-                    BLOCK_QUEUE.notify_all(true);
+                while POLL_TASK.need_rewake.swap(false, Ordering::AcqRel) {
+                    if poll_interfaces() {
+                        #[cfg(feature = "block_queue")]
+                        BLOCK_QUEUE.notify_all(true);
+                    }
                 }
             }
         }); // poll task
         register_irq_handler(VIRTIO_NET_IRQ_NUM, || {
             // error!("irq handler");
-            POLL_TASK.notify_all(false);
+            POLL_TASK.notify();
             // error!("irq handler end");
         });
     }
@@ -139,9 +145,11 @@ pub fn init_network(mut net_devs: AxDeviceContainer<AxNetDevice>) {
         spawn_async(async {
             loop {
                 POLL_TASK.wait_async().await;
-                if poll_interfaces_async().await {
-                    #[cfg(feature = "block_queue")]
-                    BLOCK_QUEUE.notify_all(true);
+                while POLL_TASK.need_rewake.swap(false, Ordering::AcqRel) {
+                    if poll_interfaces_async().await {
+                        #[cfg(feature = "block_queue")]
+                        BLOCK_QUEUE.notify_all(true);
+                    }
                 }
             }
             0
@@ -153,7 +161,7 @@ pub fn init_network(mut net_devs: AxDeviceContainer<AxNetDevice>) {
             type Output = i32;
         
             fn poll(self: core::pin::Pin<&mut Self>, cx: &mut core::task::Context<'_>) -> Poll<Self::Output> {
-                POLL_TASK.notify_all(false);
+                POLL_TASK.notify();
                 Poll::Ready(0)
             }
         }

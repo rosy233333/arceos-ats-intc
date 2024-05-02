@@ -134,7 +134,7 @@ impl TcpSocket {
             let iface = &ETH0.iface;
             let (local_endpoint, remote_endpoint) = SOCKET_SET
                 .with_socket_mut::<tcp::Socket, _, _>(handle, |socket| {
-                    error!("try to get sockets lock");
+                    // error!("try to get sockets lock");
                     socket
                         .connect(iface.lock().context(), remote_endpoint, bound_endpoint)
                         .or_else(|e| match e {
@@ -145,7 +145,7 @@ impl TcpSocket {
                                 ax_err!(ConnectionRefused, "socket connect() failed")
                             }
                         })?;
-                    error!("release sockets lock");
+                    // error!("release sockets lock");
                     Ok((
                         socket.local_endpoint().unwrap(),
                         socket.remote_endpoint().unwrap(),
@@ -255,7 +255,7 @@ impl TcpSocket {
             });
             unsafe { self.local_addr.get().write(UNSPECIFIED_ENDPOINT) }; // clear bound address
             SOCKET_SET.poll_interfaces();
-            error!("after poll interfaces");
+            // error!("after poll interfaces");
             Ok(())
         })
         .unwrap_or(Ok(()))?;
@@ -268,7 +268,7 @@ impl TcpSocket {
             unsafe { self.local_addr.get().write(UNSPECIFIED_ENDPOINT) }; // clear bound address
             LISTEN_TABLE.unlisten(local_port);
             SOCKET_SET.poll_interfaces();
-            error!("after poll interfaces");
+            // error!("after poll interfaces");
             Ok(())
         })
         .unwrap_or(Ok(()))?;
@@ -493,25 +493,33 @@ impl TcpSocket {
                 #[cfg(not(feature = "block_queue"))]
                 {
                     SOCKET_SET.poll_interfaces();
-                    error!("after poll interfaces");
+                    // error!("after poll interfaces");
                 }
                 match f() {
                     Ok(t) => {
-                        error!("block_on: return ok");
+                        // error!("block_on: return ok");
                         return Ok(t);
                     },
                     Err(AxError::WouldBlock) => {
-                        error!("block_on: return err");
+                        // error!("block_on: return err");
                         #[cfg(not(feature = "block_queue"))]
                         axtask::yield_now();
                         #[cfg(feature = "block_queue")]
                         {
                             #[cfg(any(feature = "poll", feature = "poll_async"))]
-                            BLOCK_QUEUE.wait(); // 执行poll的任务始终不阻塞，因此不需唤醒
+                            {
+                                // error!("before wait");
+                                BLOCK_QUEUE.wait(); // 执行poll的任务始终不阻塞，因此不需唤醒
+                                // error!("after wait");
+                            }
                             #[cfg(any(feature = "interrupt", feature = "interrupt_async"))]
-                            BLOCK_QUEUE.wait_and(|_| {
-                                POLL_TASK.notify_all(false);
-                            }); // 执行poll的任务只会在中断时唤醒，因此在发送数据时需要增加由任务主动唤醒的途径
+                            {
+                                // error!("before wait");
+                                BLOCK_QUEUE.wait_and(|_| {
+                                    POLL_TASK.notify();
+                                }); // 执行poll的任务只会在中断时唤醒，因此在发送数据时需要增加由任务主动唤醒的途径
+                                // error!("after wait");
+                            }
                         }
                     },
                     Err(e) => return Err(e),

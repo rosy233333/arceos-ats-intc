@@ -210,6 +210,52 @@ impl AxTask {
         }
     }
 
+    pub(crate) async fn async_yield(self: Arc<Self>) {
+        assert!(self.is_async());
+        assert!(self.is_running());
+
+        struct AsyncYield(UnsafeCell<usize>);
+        impl AsyncYield {
+            fn new() -> Self {
+                Self{0: UnsafeCell::new(0)}
+            }
+        }
+        unsafe impl Sync for AsyncYield { }
+        impl Future for AsyncYield {
+            type Output = ();
+        
+            fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+                if unsafe { *self.0.get() } == 0 {
+                    unsafe {
+                        *self.0.get() = 1;
+                    }
+                    Poll::Pending
+                }
+                else if unsafe { *self.0.get() } == 1 {
+                    unsafe {
+                        *self.0.get() = 2;
+                    }
+                    Poll::Ready(())
+                }
+                else {
+                    panic!("async_yield: invalid state");
+                    Poll::Pending
+                }
+            }
+        }
+
+        self.register_return_action(|task| {
+            let priority = task.get_priority();
+            unsafe {
+                // let driver = ATS_DRIVER.current_ref_raw();
+                let driver = GLOBAL_ATS_DRIVER.lock();
+                driver.ps_push(task.into_task_ref(), priority);
+            }
+        });
+        let yield_ = Box::pin(AsyncYield::new());
+        yield_.await;
+    }
+
     /// block the current task, then perform the `action` (usually to put this task into the block queue). 
     pub(crate) fn sync_block<F>(self: Arc<Self>, action: F)
     where F: FnOnce(AxTaskRef) + Send + Sync + 'static {

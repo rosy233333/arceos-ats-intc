@@ -74,8 +74,10 @@ impl WaitQueue {
         let task = crate::current().unwrap();
         task.set_in_wait_queue(false); // 为了防止任务在返回调度器之前（上下文还未更新）就被唤醒，因此在任务返回调度器后再设置`in_wait_queue`标记。
         self.queue.lock().push_back(task.clone());
+        // error!("before set in wait queue");
         task.clone().sync_block(|task| {
             task.set_in_wait_queue(true); // 若任务位于队列中，但`in_wait_queue`标记为`false`，则视为不在队列中。如果此时队列要弹出这个任务，则会忙等。因此任务入队和设置标记之间不能间隔太长。
+            // error!("after set in wait queue");
         });
         self.cancel_events(task);
     }
@@ -88,8 +90,10 @@ impl WaitQueue {
         let task = crate::current().unwrap();
         task.set_in_wait_queue(false); // 为了防止任务在返回调度器之前（上下文还未更新）就被唤醒，因此在任务返回调度器后再设置`in_wait_queue`标记。
         self.queue.lock().push_back(task.clone());
+        // error!("before set in wait queue");
         task.clone().async_block(|task| {
             task.set_in_wait_queue(true); // 若任务位于队列中，但`in_wait_queue`标记为`false`，则视为不在队列中。如果此时队列要弹出这个任务，则会忙等。因此任务入队和设置标记之间不能间隔太长。
+            // error!("after set in wait queue");
         }).await;
         self.cancel_events(task);
     }
@@ -104,8 +108,10 @@ impl WaitQueue {
         let task = crate::current().unwrap();
         task.set_in_wait_queue(false);
         self.queue.lock().push_back(task.clone());
+        // error!("before set in wait queue");
         task.clone().sync_block(|task| {
             task.set_in_wait_queue(true); 
+            // error!("after set in wait queue");
             return_action(task);
         });
         self.cancel_events(task);
@@ -120,8 +126,10 @@ impl WaitQueue {
         let task = crate::current().unwrap();
         task.set_in_wait_queue(false);
         self.queue.lock().push_back(task.clone());
+        // error!("before set in wait queue");
         task.clone().async_block(|task| {
             task.set_in_wait_queue(true);
+            // error!("after set in wait queue");
             return_action(task);
         }).await;
         self.cancel_events(task);
@@ -147,17 +155,19 @@ impl WaitQueue {
             //     task.set_in_wait_queue(true);
             //     self.queue.lock().push_back(task);
             // });
-            if condition() {
-                break;
+            {
+                let mut queue = self.queue.lock();
+                if condition() {
+                    break;
+                }
+                task.set_in_wait_queue(false);
+                queue.push_back(task.clone());
             }
-            let deadline = axhal::time::current_time() + Duration::from_secs(1);
-            crate::timers::set_alarm_wakeup(deadline, task.clone());
-            task.set_in_wait_queue(false);
-            self.queue.lock().push_back(task.clone());
+            // error!("before set in wait queue");
             task.clone().sync_block(|task| {
                 task.set_in_wait_queue(true);
+                // error!("after set in wait queue");
             });
-            crate::timers::cancel_alarm(&task);
         }
         self.cancel_events(task);
     }
@@ -176,13 +186,18 @@ impl WaitQueue {
                 //     task.set_in_wait_queue(true);
                 //     self.queue.lock().push_back(task);
                 // });
-                if condition() {
-                    break;
+                {
+                    let mut queue = self.queue.lock();
+                    if condition() {
+                        break;
+                    }
+                    task.set_in_wait_queue(false);
+                    queue.push_back(task.clone());
                 }
-                task.set_in_wait_queue(false);
-                self.queue.lock().push_back(task.clone());
+                // error!("before set in wait queue");
                 task.clone().async_block(|task| {
                     task.set_in_wait_queue(true);
+                    // error!("after set in wait queue");
                 }).await;
             }
             self.cancel_events(task);
@@ -207,8 +222,10 @@ impl WaitQueue {
         // });
         curr.set_in_wait_queue(false);
         self.queue.lock().push_back(curr.clone());
+        // error!("before set in wait queue");
         curr.clone().sync_block(|task| {
             task.set_in_wait_queue(true);
+            // error!("after set in wait queue");
         });
 
         let timeout = curr.in_wait_queue(); // still in the wait queue, must have timed out
@@ -226,6 +243,7 @@ impl WaitQueue {
     where
         F: Fn() -> bool,
     {
+
         let curr = crate::current().unwrap();
         let deadline = axhal::time::current_time() + dur;
         debug!(
@@ -238,18 +256,24 @@ impl WaitQueue {
         let mut timeout = true;
         while axhal::time::current_time() < deadline {
             // let mut rq = RUN_QUEUE.lock();
-            if condition() {
-                timeout = false;
-                break;
+            {
+                let mut queue = self.queue.lock(); 
+                if condition() {
+                    timeout = false;
+                    break;
+                }
+                // rq.block_current(|task| {
+                //     task.set_in_wait_queue(true);
+                //     self.queue.lock().push_back(task);
+                // });
+                curr.set_in_wait_queue(false);
+                queue.push_back(curr.clone());
             }
-            // rq.block_current(|task| {
-            //     task.set_in_wait_queue(true);
-            //     self.queue.lock().push_back(task);
-            // });
-            curr.set_in_wait_queue(false);
-            self.queue.lock().push_back(curr.clone());
+
+            // error!("before set in wait queue");
             curr.clone().sync_block(|task| {
                 task.set_in_wait_queue(true);
+                // error!("after set in wait queue");
             });
         }
         self.cancel_events(curr);
@@ -324,7 +348,9 @@ impl WaitQueue {
 
     pub(crate) fn notify_one_locked(&self, resched: bool) -> bool {
         if let Some(task) = self.queue.lock().pop_front() {
+            // error!("before wait enqueue");
             while !task.in_wait_queue() { }
+            // error!("after wait enqueue");
             task.set_in_wait_queue(false);
             // rq.unblock_task(task, resched);
             task.set_state(TaskState::Ready);
@@ -345,6 +371,9 @@ impl WaitQueue {
     pub(crate) fn notify_all_locked(&self, resched: bool) {
         while let Some(task) = self.queue.lock().pop_front() {
             while !task.in_wait_queue() { }
+            if !task.in_wait_queue() {
+                continue;
+            }
             task.set_in_wait_queue(false);
             // rq.unblock_task(task, resched);
             task.set_state(TaskState::Ready);

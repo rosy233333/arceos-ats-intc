@@ -60,16 +60,16 @@ impl ListenTable {
     }
 
     pub fn can_listen(&self, port: u16) -> bool {
-        error!("try to get listen table lock");
+        // error!("try to get listen table lock");
         let res = self.tcp[port as usize].lock().is_none();
-        error!("release listen table lock");
+        // error!("release listen table lock");
         res
     }
 
     pub fn listen(&self, listen_endpoint: IpListenEndpoint) -> AxResult {
         let port = listen_endpoint.port;
         assert_ne!(port, 0);
-        error!("try to get listen table lock");
+        // error!("try to get listen table lock");
         let mut entry = self.tcp[port as usize].lock();
         let res = if entry.is_none() {
             *entry = Some(Box::new(ListenTableEntry::new(listen_endpoint)));
@@ -77,36 +77,36 @@ impl ListenTable {
         } else {
             ax_err!(AddrInUse, "socket listen() failed")
         };
-        error!("release listen table lock");
+        // error!("release listen table lock");
         res
     }
 
     pub fn unlisten(&self, port: u16) {
         debug!("TCP socket unlisten on {}", port);
-        error!("try to get listen table lock");
+        // error!("try to get listen table lock");
         *self.tcp[port as usize].lock() = None;
-        error!("release listen table lock");
+        // error!("release listen table lock");
     }
 
     pub fn can_accept(&self, port: u16) -> AxResult<bool> {
-        error!("try to get sockets lock");
+        // error!("try to get sockets lock");
         let mut set = SOCKET_SET.0.lock();
         // compiler_fence(Ordering::SeqCst);
-        error!("try to get listen table lock");
+        // error!("try to get listen table lock");
         let res = if let Some(entry) = self.tcp[port as usize].lock().deref() {
             Ok(entry.syn_queue.iter().any(|&handle| is_connected_locked(&mut set, handle)))
         } else {
             ax_err!(InvalidInput, "socket accept() failed: not listen")
         };
-        error!("release all locks");
+        // error!("release all locks");
         res
     }
 
     pub fn accept(&self, port: u16) -> AxResult<(SocketHandle, (IpEndpoint, IpEndpoint))> {
-        error!("try to get sockets lock");
+        // error!("try to get sockets lock");
         let mut set = SOCKET_SET.0.lock();
         // compiler_fence(Ordering::SeqCst);
-        error!("try to get listen table lock");
+        // error!("try to get listen table lock");
         let res = if let Some(entry) = self.tcp[port as usize].lock().deref_mut() {
             let syn_queue = &mut entry.syn_queue;
             // let (idx, addr_tuple) = syn_queue
@@ -134,13 +134,13 @@ impl ListenTable {
                 Ok((handle, addr_tuple))
             }
             else {
-                error!("release all locks");
+                // error!("release all locks");
                 Err(AxError::WouldBlock)
             }
         } else {
             ax_err!(InvalidInput, "socket accept() failed: not listen")
         };
-        error!("release all locks");
+        // error!("release all locks");
         res
     }
 
@@ -150,7 +150,7 @@ impl ListenTable {
         dst: IpEndpoint,
         sockets: &mut SocketSet<'_>,
     ) {
-        error!("try to get listen table lock");
+        // error!("try to get listen table lock");
         if let Some(entry) = self.tcp[dst.port as usize].lock().deref_mut() {
             if !entry.can_accept(dst.addr) {
                 // not listening on this address
@@ -171,7 +171,7 @@ impl ListenTable {
                 entry.syn_queue.push_back(handle);
             }
         }
-        error!("release listen table lock");
+        // error!("release listen table lock");
     }
 }
 

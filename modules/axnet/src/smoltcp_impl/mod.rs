@@ -11,6 +11,7 @@ use core::cell::RefCell;
 use core::mem::ManuallyDrop;
 use core::ops::DerefMut;
 use core::sync;
+use core::sync::atomic::{AtomicBool, Ordering};
 
 use axdriver::prelude::*;
 use axhal::time::{current_time_nanos, NANOS_PER_MICROS};
@@ -60,7 +61,35 @@ static ETH0: LazyInit<InterfaceWrapper> = LazyInit::new();
 #[cfg(feature = "block_queue")]
 pub(crate) static BLOCK_QUEUE: WaitQueue = WaitQueue::new();
 #[cfg(any(feature = "interrupt", feature = "interrupt_async"))]
-pub(crate) static POLL_TASK: WaitQueue = WaitQueue::new();
+pub(crate) static POLL_TASK: PollTask = PollTask::new();
+
+/// 在WaitQueue之外，增加了在其中没有任务时也能保留一次唤醒的功能
+pub struct PollTask {
+    queue: WaitQueue,
+    pub need_rewake: AtomicBool,
+}
+
+impl PollTask {
+    pub const fn new() -> Self {
+        Self {
+            queue: WaitQueue::new(),
+            need_rewake: AtomicBool::new(false),
+        }
+    }
+
+    pub fn wait(&self) {
+        self.queue.wait();
+    }
+
+    pub async fn wait_async(&self) {
+        self.queue.wait_async().await;
+    }
+
+    pub fn notify(&self) {
+        self.need_rewake.store(true, Ordering::Release);
+        self.queue.notify_all(false);
+    }
+}
 
 struct SocketSetWrapper<'a>(Mutex<SocketSet<'a>>);
 
@@ -104,11 +133,11 @@ impl<'a> SocketSetWrapper<'a> {
     }
 
     pub fn add<T: AnySocket<'a>>(&self, socket: T) -> SocketHandle {
-        error!("try to get sockets lock");
+        // error!("try to get sockets lock");
         let handle = self.0.lock().add(socket);
         debug!("socket {}: created", handle);
         let res = handle;
-        error!("release sockets lock");
+        // error!("release sockets lock");
         res
     }
 
@@ -116,11 +145,11 @@ impl<'a> SocketSetWrapper<'a> {
     where
         F: FnOnce(&T) -> R,
     {
-        error!("try to get sockets lock");
+        // error!("try to get sockets lock");
         let set = self.0.lock();
         let socket = set.get(handle);
         let res = f(socket);
-        error!("release sockets lock");
+        // error!("release sockets lock");
         res
     }
 
@@ -128,17 +157,17 @@ impl<'a> SocketSetWrapper<'a> {
     where
         F: FnOnce(&mut T) -> R,
     {
-        error!("try to get sockets lock");
+        // error!("try to get sockets lock");
         let mut set = self.0.lock();
         let socket = set.get_mut(handle);
         let res = f(socket);
-        error!("release sockets lock");
+        // error!("release sockets lock");
         res
     }
 
     pub fn poll_interfaces(&self) -> bool {
         let res = ETH0.poll(&self.0);
-        error!("after poll");
+        // error!("after poll");
         res
     }
 
@@ -148,7 +177,7 @@ impl<'a> SocketSetWrapper<'a> {
 
     pub fn poll_interface_return_delay(&self) -> Option<smoltcp::time::Duration> {
         ETH0.poll(&self.0);
-        error!("after poll");
+        // error!("after poll");
         ETH0.poll_delay(&self.0)
     }
 
@@ -158,10 +187,10 @@ impl<'a> SocketSetWrapper<'a> {
     }
 
     pub fn remove(&self, handle: SocketHandle) {
-        error!("try to get sockets lock");
+        // error!("try to get sockets lock");
         self.0.lock().remove(handle);
         debug!("socket {}: destroyed", handle);
-        error!("release sockets lock");
+        // error!("release sockets lock");
     }
 }
 
@@ -193,40 +222,40 @@ impl InterfaceWrapper {
     }
 
     pub fn setup_ip_addr(&self, ip: IpAddress, prefix_len: u8) {
-        error!("try to get iface lock");
+        // error!("try to get iface lock");
         let mut iface = self.iface.lock();
         iface.update_ip_addrs(|ip_addrs| {
             ip_addrs.push(IpCidr::new(ip, prefix_len)).unwrap();
         });
-        error!("release iface lock");
+        // error!("release iface lock");
     }
 
     pub fn setup_gateway(&self, gateway: IpAddress) {
-        error!("try to get iface lock");
+        // error!("try to get iface lock");
         let mut iface = self.iface.lock();
         match gateway {
             IpAddress::Ipv4(v4) => iface.routes_mut().add_default_ipv4_route(v4).unwrap(),
         };
-        error!("release iface lock");
+        // error!("release iface lock");
     }
 
     pub fn poll(&self, sockets: &Mutex<SocketSet>) -> bool {
-        error!("try to get dev lock");
+        // error!("try to get dev lock");
         let mut dev = self.dev.lock();
-        error!("try to get iface lock");
+        // error!("try to get iface lock");
         // sync::atomic::compiler_fence(sync::atomic::Ordering::SeqCst);
         let mut iface = self.iface.lock();
-        error!("try to get sockets lock");
+        // error!("try to get sockets lock");
         // sync::atomic::compiler_fence(sync::atomic::Ordering::SeqCst);
         let mut sockets = sockets.lock();
-        error!("get all locks");
+        // error!("get all locks");
         let timestamp = Self::current_time();
         let res = iface.poll(timestamp, dev.deref_mut(), &mut sockets);
-        error!("before release all locks");
+        // error!("before release all locks");
         drop(dev);
         drop(iface);
         drop(sockets);
-        error!("after release all locks");
+        // error!("after release all locks");
         res
     }
 
@@ -243,15 +272,15 @@ impl InterfaceWrapper {
     }
 
     pub fn poll_delay(&self, sockets: &Mutex<SocketSet>) -> Option<smoltcp::time::Duration>{
-        error!("try to get iface lock");
+        // error!("try to get iface lock");
         let mut iface = self.iface.lock();
         // sync::atomic::compiler_fence(sync::atomic::Ordering::SeqCst);
-        error!("try to get sockets lock");
+        // error!("try to get sockets lock");
         let mut sockets = sockets.lock();
-        error!("get all locks");
+        // error!("get all locks");
         let timestamp = Self::current_time();
         let res = iface.poll_delay(timestamp, &mut sockets);
-        error!("release all locks");
+        // error!("release all locks");
         res
     }
 
@@ -385,7 +414,7 @@ fn snoop_tcp_packet(buf: &[u8], sockets: &mut SocketSet<'_>) -> Result<(), smolt
 /// packets to the NIC.
 pub fn poll_interfaces() -> bool {
     let res = SOCKET_SET.poll_interfaces();
-    error!("after poll interfaces");
+    // error!("after poll interfaces");
     res
 }
 

@@ -47,11 +47,13 @@ fn accept_loop() -> io::Result<()> {
     loop {
         match listener.accept() {
             Ok((r_stream, addr)) => {
-                println!("new client {}: {}", i, addr);
+                // println!("new client {}: {}", i, addr);
                 // let mut w_stream = TcpStream::connect(SEND_ADDR)?;
                 thread::spawn(move || match echo_server(r_stream) {
-                    Err(e) => println!("client connection error: {:?}", e),
-                    Ok(()) => println!("client {} closed successfully", i),
+                    // Err(e) => println!("client connection error: {:?}", e),
+                    // Ok(()) => println!("client {} closed successfully", i),
+                    Err(e) => { },
+                    Ok(()) => { },
                 });
             }
             Err(e) => return Err(e),

@@ -74,7 +74,7 @@ impl<T: ?Sized> Mutex<T> {
     /// The returned value may be dereferenced for data access
     /// and the lock will be dropped when the guard falls out of scope.
     pub fn lock(&self) -> MutexGuard<T> {
-        log::error!("into lock");
+        // log::error!("into lock");
         let current_id = current_id().unwrap();
         loop {
             // Can fail to lock even if the spinlock is not locked. May be more efficient than `try_lock`
@@ -92,7 +92,7 @@ impl<T: ?Sized> Mutex<T> {
             //     Ordering::SeqCst,
             // ) {
                 Ok(_) => {
-                    log::error!("acquire lock successful");
+                    // log::error!("acquire lock successful");
                     break;
                     // return MutexGuard {
                     //     lock: self,
@@ -106,7 +106,7 @@ impl<T: ?Sized> Mutex<T> {
                         "{} tried to acquire mutex it already owns.",
                         current_id
                     );
-                    log::error!("owner id: {}", owner_id);
+                    // log::error!("owner id: {}", owner_id);
                     // core::sync::atomic::compiler_fence(Ordering::SeqCst);
                     // Wait until the lock looks unlocked before retrying
                     // log::error!("acquire lock: failed, waiting ...");
