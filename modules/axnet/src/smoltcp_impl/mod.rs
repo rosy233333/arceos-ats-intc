@@ -137,7 +137,9 @@ impl<'a> SocketSetWrapper<'a> {
     }
 
     pub fn poll_interfaces(&self) -> bool {
-        ETH0.poll(&self.0)
+        let res = ETH0.poll(&self.0);
+        error!("after poll");
+        res
     }
 
     pub async fn poll_interfaces_async(&'static self) -> bool {
@@ -146,6 +148,7 @@ impl<'a> SocketSetWrapper<'a> {
 
     pub fn poll_interface_return_delay(&self) -> Option<smoltcp::time::Duration> {
         ETH0.poll(&self.0);
+        error!("after poll");
         ETH0.poll_delay(&self.0)
     }
 
@@ -211,15 +214,19 @@ impl InterfaceWrapper {
         error!("try to get dev lock");
         let mut dev = self.dev.lock();
         error!("try to get iface lock");
-        sync::atomic::compiler_fence(sync::atomic::Ordering::SeqCst);
+        // sync::atomic::compiler_fence(sync::atomic::Ordering::SeqCst);
         let mut iface = self.iface.lock();
         error!("try to get sockets lock");
-        sync::atomic::compiler_fence(sync::atomic::Ordering::SeqCst);
+        // sync::atomic::compiler_fence(sync::atomic::Ordering::SeqCst);
         let mut sockets = sockets.lock();
         error!("get all locks");
         let timestamp = Self::current_time();
         let res = iface.poll(timestamp, dev.deref_mut(), &mut sockets);
-        error!("release all locks");
+        error!("before release all locks");
+        drop(dev);
+        drop(iface);
+        drop(sockets);
+        error!("after release all locks");
         res
     }
 
@@ -238,7 +245,7 @@ impl InterfaceWrapper {
     pub fn poll_delay(&self, sockets: &Mutex<SocketSet>) -> Option<smoltcp::time::Duration>{
         error!("try to get iface lock");
         let mut iface = self.iface.lock();
-        sync::atomic::compiler_fence(sync::atomic::Ordering::SeqCst);
+        // sync::atomic::compiler_fence(sync::atomic::Ordering::SeqCst);
         error!("try to get sockets lock");
         let mut sockets = sockets.lock();
         error!("get all locks");
@@ -377,7 +384,9 @@ fn snoop_tcp_packet(buf: &[u8], sockets: &mut SocketSet<'_>) -> Result<(), smolt
 /// It may receive packets from the NIC and process them, and transmit queued
 /// packets to the NIC.
 pub fn poll_interfaces() -> bool {
-    SOCKET_SET.poll_interfaces()
+    let res = SOCKET_SET.poll_interfaces();
+    error!("after poll interfaces");
+    res
 }
 
 pub async fn poll_interfaces_async() -> bool {

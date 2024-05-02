@@ -255,6 +255,7 @@ impl TcpSocket {
             });
             unsafe { self.local_addr.get().write(UNSPECIFIED_ENDPOINT) }; // clear bound address
             SOCKET_SET.poll_interfaces();
+            error!("after poll interfaces");
             Ok(())
         })
         .unwrap_or(Ok(()))?;
@@ -267,6 +268,7 @@ impl TcpSocket {
             unsafe { self.local_addr.get().write(UNSPECIFIED_ENDPOINT) }; // clear bound address
             LISTEN_TABLE.unlisten(local_port);
             SOCKET_SET.poll_interfaces();
+            error!("after poll interfaces");
             Ok(())
         })
         .unwrap_or(Ok(()))?;
@@ -489,10 +491,17 @@ impl TcpSocket {
         } else {
             loop {
                 #[cfg(not(feature = "block_queue"))]
-                SOCKET_SET.poll_interfaces();
+                {
+                    SOCKET_SET.poll_interfaces();
+                    error!("after poll interfaces");
+                }
                 match f() {
-                    Ok(t) => return Ok(t),
+                    Ok(t) => {
+                        error!("block_on: return ok");
+                        return Ok(t);
+                    },
                     Err(AxError::WouldBlock) => {
+                        error!("block_on: return err");
                         #[cfg(not(feature = "block_queue"))]
                         axtask::yield_now();
                         #[cfg(feature = "block_queue")]

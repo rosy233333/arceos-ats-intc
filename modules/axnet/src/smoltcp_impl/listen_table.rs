@@ -89,44 +89,58 @@ impl ListenTable {
     }
 
     pub fn can_accept(&self, port: u16) -> AxResult<bool> {
-        error!("try to get listen tablelock");
+        error!("try to get sockets lock");
         let mut set = SOCKET_SET.0.lock();
-        compiler_fence(Ordering::SeqCst);
+        // compiler_fence(Ordering::SeqCst);
+        error!("try to get listen table lock");
         let res = if let Some(entry) = self.tcp[port as usize].lock().deref() {
             Ok(entry.syn_queue.iter().any(|&handle| is_connected_locked(&mut set, handle)))
         } else {
             ax_err!(InvalidInput, "socket accept() failed: not listen")
         };
-        error!("release listen table lock");
+        error!("release all locks");
         res
     }
 
     pub fn accept(&self, port: u16) -> AxResult<(SocketHandle, (IpEndpoint, IpEndpoint))> {
-        error!("try to get listen table lock");
+        error!("try to get sockets lock");
         let mut set = SOCKET_SET.0.lock();
-        compiler_fence(Ordering::SeqCst);
+        // compiler_fence(Ordering::SeqCst);
+        error!("try to get listen table lock");
         let res = if let Some(entry) = self.tcp[port as usize].lock().deref_mut() {
             let syn_queue = &mut entry.syn_queue;
-            let (idx, addr_tuple) = syn_queue
+            // let (idx, addr_tuple) = syn_queue
+            //     .iter()
+            //     .enumerate()
+            //     .find_map(|(idx, &handle)| {
+            //         is_connected_locked(&mut set, handle).then(|| (idx, get_addr_tuple_locked(&mut set, handle)))
+            //     })
+            //     .ok_or(AxError::WouldBlock)?; // wait for connection
+            let opt = syn_queue
                 .iter()
                 .enumerate()
                 .find_map(|(idx, &handle)| {
                     is_connected_locked(&mut set, handle).then(|| (idx, get_addr_tuple_locked(&mut set, handle)))
-                })
-                .ok_or(AxError::WouldBlock)?; // wait for connection
-            if idx > 0 {
-                warn!(
-                    "slow SYN queue enumeration: index = {}, len = {}!",
-                    idx,
-                    syn_queue.len()
-                );
+                });
+            if let Some((idx, addr_tuple)) = opt {
+                if idx > 0 {
+                    warn!(
+                        "slow SYN queue enumeration: index = {}, len = {}!",
+                        idx,
+                        syn_queue.len()
+                    );
+                }
+                let handle = syn_queue.swap_remove_front(idx).unwrap();
+                Ok((handle, addr_tuple))
             }
-            let handle = syn_queue.swap_remove_front(idx).unwrap();
-            Ok((handle, addr_tuple))
+            else {
+                error!("release all locks");
+                Err(AxError::WouldBlock)
+            }
         } else {
             ax_err!(InvalidInput, "socket accept() failed: not listen")
         };
-        error!("release listen table lock");
+        error!("release all locks");
         res
     }
 

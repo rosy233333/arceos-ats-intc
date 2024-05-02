@@ -150,14 +150,14 @@ impl WaitQueue {
             if condition() {
                 break;
             }
-            // let deadline = axhal::time::current_time() + Duration::from_secs(1);
-            // crate::timers::set_alarm_wakeup(deadline, task.clone());
+            let deadline = axhal::time::current_time() + Duration::from_secs(1);
+            crate::timers::set_alarm_wakeup(deadline, task.clone());
             task.set_in_wait_queue(false);
             self.queue.lock().push_back(task.clone());
             task.clone().sync_block(|task| {
                 task.set_in_wait_queue(true);
             });
-            // crate::timers::cancel_alarm(&task);
+            crate::timers::cancel_alarm(&task);
         }
         self.cancel_events(task);
     }
