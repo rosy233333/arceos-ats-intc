@@ -89,7 +89,7 @@ pub fn init_network(mut net_devs: AxDeviceContainer<AxNetDevice>) {
                 #[cfg(feature = "block_queue")]
                 BLOCK_QUEUE.notify_all(true);
             }
-            // axtask::yield_now();
+            axtask::yield_now();
         }
     });
 
@@ -112,7 +112,7 @@ pub fn init_network(mut net_devs: AxDeviceContainer<AxNetDevice>) {
                 #[cfg(feature = "block_queue")]
                 BLOCK_QUEUE.notify_all(true);
             }
-            // axtask::yield_now_async().await;
+            axtask::yield_now_async().await;
         }
     });
 

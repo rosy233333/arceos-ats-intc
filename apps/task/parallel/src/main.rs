@@ -57,6 +57,7 @@ fn main() {
             .collect::<Vec<_>>(),
     );
     let expect: u64 = vec.iter().map(sqrt).sum();
+    println!("expect sum = {}", expect);
 
     // #[cfg(feature = "axstd")]
     // {
@@ -87,7 +88,7 @@ fn main() {
             let partial_sum: u64 = vec[left..right].iter().map(sqrt).sum();
             // barrier();
 
-            // println!("part {}: {:?} finished", i, thread::current().id());
+            println!("part {}: {:?} finished, partial sum = {}", i, thread::current().id(), partial_sum);
             partial_sum
         }));
         // tasks.push(thread::spawn(move || {
@@ -113,8 +114,8 @@ fn main() {
     let end_time: std::time::Instant = std::time::Instant::now();
     let used_time = end_time.duration_since(start_time);
     println!("used time = {:?}", used_time);
-    // println!("sum = {}", actual);
+    println!("actual sum = {}", actual);
     assert_eq!(expect, actual);
 
-    println!("Parallel summation tests run OK!");
+    println!("actual = expect, Parallel summation tests run OK!");
 }
