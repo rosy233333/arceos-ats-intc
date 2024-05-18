@@ -73,6 +73,7 @@ members = [
 #   "apps/ats-intc-test",
 #   "apps/ats-intc-executor",
     "apps/axtask-test",
+    "apps/presentation"
 ]
 
 [profile.release]
