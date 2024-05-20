@@ -16,12 +16,16 @@ use crate::stats::*;
 #[no_mangle]
 fn main() {
     println!("task test start.");
-    let mut used_time_us: Vec<u128> = Vec::new();
-    for i in 0 .. 10 {
-        used_time_us.push(test_task().as_micros());
+
+    #[cfg(not(feature = "modified"))]
+    {
+        let mut used_time_us: Vec<u128> = Vec::new();
+        for i in 0 .. 10 {
+            used_time_us.push(test_task().as_micros());
+        }
+        println!("thread result stats:");
+        println!("mean: {} μs, variance: {} μs", mean(&used_time_us).unwrap(), variance(&used_time_us).unwrap());
     }
-    println!("thread result stats:");
-    println!("mean: {} μs, variance: {} μs", mean(&used_time_us).unwrap(), variance(&used_time_us).unwrap());
 
     #[cfg(feature = "modified")]
     {
