@@ -44,3 +44,8 @@ where
         axerrno::ax_err_type!(InvalidInput, "could not resolve to any addresses")
     }))
 }
+
+// should use when kernel don't start interrupt or poll when os starts.
+pub unsafe fn start_interrupt_or_poll() {
+    arceos_api::net::ax_start_interrupt_or_poll().unwrap();
+}

@@ -5,6 +5,7 @@ mod parallel;
 mod echo_server;
 mod stats;
 
+use axstd::net::start_interrupt_or_poll;
 use axstd::println;
 use axstd::vec::Vec;
 use crate::parallel::*;
@@ -33,5 +34,11 @@ fn main() {
     }
 
     println!("net test start, running server...");
+
+    #[cfg(feature = "modified")]
+    unsafe {
+        start_interrupt_or_poll();
+    }
+
     run_server();
 }

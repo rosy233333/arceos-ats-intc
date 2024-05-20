@@ -129,3 +129,8 @@ pub fn ax_poll_interfaces() -> AxResult {
     axnet::poll_interfaces();
     Ok(())
 }
+
+pub fn ax_start_interrupt_or_poll() -> AxResult {
+    axnet::start_interrupt_or_poll();
+    Ok(())
+}

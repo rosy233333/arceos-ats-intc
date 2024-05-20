@@ -69,6 +69,10 @@ pub fn init_network(mut net_devs: AxDeviceContainer<AxNetDevice>) {
     info!("  use NIC 0: {:?}", dev.device_name());
     net_impl::init(dev);
 
+    // start_interrupt_or_poll();
+}
+
+pub fn start_interrupt_or_poll() {
     #[cfg(feature = "poll")]
     spawn(|| {
         loop {

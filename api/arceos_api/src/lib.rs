@@ -320,6 +320,8 @@ pub mod net {
         /// It may receive packets from the NIC and process them, and transmit queued
         /// packets to the NIC.
         pub fn ax_poll_interfaces() -> AxResult;
+
+        pub fn ax_start_interrupt_or_poll() -> AxResult;
     }
 }
 

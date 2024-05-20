@@ -5,8 +5,8 @@ use axstd::{sync::Arc, vec::Vec};
 use axstd::time::Instant;
 use axstd::println;
 
-const NUM_DATA: usize = 2_000_000;
-const NUM_TASKS: usize = 128;
+const NUM_DATA: usize = 840000;
+const NUM_TASKS: usize = 80;
 
 fn sqrt(n: &u64) -> u64 {
     let mut x = *n;
