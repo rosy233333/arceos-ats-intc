@@ -2,6 +2,7 @@
 use axstd::net::{TcpListener, TcpStream};
 use axstd::{println, thread};
 use axstd::vec::Vec;
+use crate::parallel::sqrt;
 
 const LOCAL_IP: &str = "0.0.0.0";
 const LOCAL_PORT: u16 = 5555;
@@ -18,17 +19,38 @@ fn reverse(buf: &[u8]) -> Vec<u8> {
     lines.join(&b'\n')
 }
 
-fn echo_server(mut r_stream: TcpStream) -> io::Result<()> {
-    const FRAME_SIZE : usize = 1024;
+fn echo_server(mut r_stream: TcpStream, client_id: usize) -> io::Result<()> {
+    const FRAME_SIZE : usize = 2048;
     let mut buf = [0u8; FRAME_SIZE];
-    loop {
-        let n = r_stream.read(&mut buf)?;
-        if n == 0 {
-            r_stream.shutdown()?;
-            return Ok(());
+    let mut result: u64 = 0;
+    let mut read_pos: usize = 0;
+    let mut compute_pos: usize = 0;
+    while read_pos < FRAME_SIZE {
+        {
+            let n: usize = r_stream.read(&mut buf[read_pos ..])?;
+            #[cfg(feature = "output")]
+            println!("client {} read data, read size = {}, current read pos = {}", client_id, n, read_pos);
+            read_pos += n;
+            if n == 0 {
+                break;
+            }
         }
-        r_stream.write_all(&buf)?;
+        {
+            while compute_pos + 8 <= read_pos {
+                // #[cfg(feature = "output")]
+                // println!("client {} compute, current compute pos = {}", client_id, compute_pos);
+                let mut this_number: [u8; 8] = [0; 8];
+                this_number.copy_from_slice(&buf[compute_pos .. (compute_pos + 8)]);
+                result += sqrt(&u64::from_le_bytes(this_number));
+                compute_pos += 8;
+            }
+        }
     }
+
+    r_stream.write_all(&result.to_le_bytes())?;
+    r_stream.flush()?;
+    r_stream.shutdown()?;
+    return Ok(());
 }
 
 fn accept_loop() -> io::Result<()> {
@@ -41,13 +63,13 @@ fn accept_loop() -> io::Result<()> {
             Ok((r_stream, addr)) => {
                 #[cfg(feature = "output")]
                 println!("new client {}: {}", i, addr);
-                thread::spawn(move || match echo_server(r_stream) {
+                thread::spawn(move || match echo_server(r_stream, i) {
                     Err(e) => {
                         println!("client {} connection error: {:?}", i, e)
                     },
                     Ok(()) => {
                         #[cfg(feature = "output")]
-                        println!("client {} closed successfully", i)
+                        println!("client {} is replied and closed successfully", i)
                     },
                 });
             }

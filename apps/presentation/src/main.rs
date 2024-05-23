@@ -17,10 +17,15 @@ use crate::stats::*;
 fn main() {
     println!("task test start.");
 
+    #[cfg(not(feature = "output"))]
+    const TASK_TEST_NUM: usize = 10;
+    #[cfg(feature = "output")]
+    const TASK_TEST_NUM: usize = 1;
+
     #[cfg(not(feature = "modified"))]
     {
         let mut used_time_us: Vec<u128> = Vec::new();
-        for i in 0 .. 10 {
+        for i in 0 .. TASK_TEST_NUM {
             used_time_us.push(test_task().as_micros());
         }
         println!("thread result stats:");
@@ -30,7 +35,7 @@ fn main() {
     #[cfg(feature = "modified")]
     {
         let mut coroutine_used_time_us: Vec<u128> = Vec::new();
-        for i in 0 .. 10 {
+        for i in 0 .. TASK_TEST_NUM {
             coroutine_used_time_us.push(test_task_with_coroutine().as_micros());
         }
         println!("couroutine result stats:");
