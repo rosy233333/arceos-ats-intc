@@ -27,7 +27,10 @@ fn main() {
     {
         let mut used_time_us: Vec<u128> = Vec::new();
         for i in 0 .. TASK_TEST_NUM {
-            used_time_us.push(test_task().as_micros());
+            #[cfg(not(feature = "output"))]
+            used_time_us.push(test_task(840000, 240).as_micros());
+            #[cfg(feature = "output")]
+            used_time_us.push(test_task(84000, 10).as_micros());
         }
         println!("thread result stats:");
         println!("mean: {} μs, variance: {} μs", mean(&used_time_us).unwrap(), variance(&used_time_us).unwrap());
@@ -37,7 +40,10 @@ fn main() {
     {
         let mut coroutine_used_time_us: Vec<u128> = Vec::new();
         for i in 0 .. TASK_TEST_NUM {
-            coroutine_used_time_us.push(test_task_with_coroutine().as_micros());
+            #[cfg(not(feature = "output"))]
+            coroutine_used_time_us.push(test_task_with_coroutine(840000, 240).as_micros());
+            #[cfg(feature = "output")]
+            coroutine_used_time_us.push(test_task_with_coroutine(84000, 10).as_micros());
         }
         println!("couroutine result stats:");
         println!("mean: {} μs, variance: {} μs", mean(&coroutine_used_time_us).unwrap(), variance(&coroutine_used_time_us).unwrap());

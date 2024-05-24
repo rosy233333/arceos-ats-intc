@@ -5,8 +5,8 @@ use axstd::{sync::Arc, vec::Vec};
 use axstd::time::Instant;
 use axstd::println;
 
-const NUM_DATA: usize = 840000;
-const NUM_TASKS: usize = 240;
+// const NUM_DATA: usize = 840000;
+// const NUM_TASKS: usize = 240;
 
 pub fn sqrt(n: &u64) -> u64 {
     let mut x = *n;
@@ -18,10 +18,10 @@ pub fn sqrt(n: &u64) -> u64 {
     }
 }
 
-pub fn test_task() -> Duration {
+pub fn test_task(num_data: usize, num_tasks: usize) -> Duration {
     let mut rng = SmallRng::seed_from_u64(0xdead_beef);
     let vec = Arc::new(
-        (0..NUM_DATA)
+        (0..num_data)
             .map(|_| rng.next_u32() as u64)
             .collect::<Vec<_>>(),
     );
@@ -29,13 +29,13 @@ pub fn test_task() -> Duration {
     #[cfg(feature = "output")]
     println!("expect sum = {}", expect);
 
-    let mut tasks = Vec::with_capacity(NUM_TASKS);
+    let mut tasks = Vec::with_capacity(num_tasks);
     let start_time: Instant = Instant::now();
-    for i in 0..NUM_TASKS {
+    for i in 0 .. num_tasks {
         let vec = vec.clone();
         tasks.push(thread::spawn(move || {
-            let left = i * (NUM_DATA / NUM_TASKS);
-            let right = (left + (NUM_DATA / NUM_TASKS)).min(NUM_DATA);
+            let left = i * (num_data / num_tasks);
+            let right = (left + (num_data / num_tasks)).min(num_data);
             #[cfg(feature = "output")]
             println!(
                 "part {}: {:?} [{}, {})",
@@ -66,11 +66,11 @@ pub fn test_task() -> Duration {
 }
 
 #[cfg(feature = "modified")]
-pub fn test_task_with_coroutine() -> Duration {
+pub fn test_task_with_coroutine(num_data: usize, num_tasks: usize) -> Duration {
 
     let mut rng = SmallRng::seed_from_u64(0xdead_beef);
     let vec = Arc::new(
-        (0..NUM_DATA)
+        (0..num_data)
             .map(|_| rng.next_u32() as u64)
             .collect::<Vec<_>>(),
     );
@@ -78,13 +78,13 @@ pub fn test_task_with_coroutine() -> Duration {
     #[cfg(feature = "output")]
     println!("expect sum = {}", expect);
 
-    let mut tasks = Vec::with_capacity(NUM_TASKS);
+    let mut tasks = Vec::with_capacity(num_tasks);
     let start_time: Instant = Instant::now();
-    for i in 0..NUM_TASKS {
+    for i in 0..num_tasks {
         let vec = vec.clone();
         tasks.push(thread::spawn_async(async move {
-            let left = i * (NUM_DATA / NUM_TASKS);
-            let right = (left + (NUM_DATA / NUM_TASKS)).min(NUM_DATA);
+            let left = i * (num_data / num_tasks);
+            let right = (left + (num_data / num_tasks)).min(num_data);
             #[cfg(feature = "output")]
             println!(
                 "part {}: {:?} [{}, {})",
