@@ -53,6 +53,9 @@ fn echo_server(mut r_stream: TcpStream, client_id: usize) -> io::Result<()> {
     
         r_stream.write_all(&result.to_le_bytes())?;
         r_stream.flush()?;
+        
+        #[cfg(feature = "output")]
+        println!("client {} response", client_id);
     }
     // r_stream.shutdown()?;
 }
