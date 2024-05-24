@@ -5,6 +5,7 @@ mod parallel;
 mod echo_server;
 mod stats;
 
+#[cfg(feature = "modified")]
 use axstd::net::start_interrupt_or_poll;
 use axstd::println;
 use axstd::vec::Vec;
