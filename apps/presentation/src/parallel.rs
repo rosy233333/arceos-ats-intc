@@ -38,9 +38,9 @@ pub fn test_task(num_data: usize, num_tasks: usize) -> Duration {
             let right = (left + (num_data / num_tasks)).min(num_data);
             #[cfg(feature = "output")]
             println!(
-                "part {}: {:?} [{}, {})",
+                "part {}: ThreadId({}) [{}, {})",
                 i,
-                thread::current().id(),
+                thread::current().id().as_u64(),
                 left,
                 right
             );
@@ -48,7 +48,7 @@ pub fn test_task(num_data: usize, num_tasks: usize) -> Duration {
             let partial_sum: u64 = vec[left..right].iter().map(sqrt).sum();
 
             #[cfg(feature = "output")]
-            println!("part {}: {:?} finished", i, thread::current().id());
+            println!("part {}: ThreadId({}) finished", i, thread::current().id().as_u64());
             partial_sum
         }));
     }
@@ -87,9 +87,9 @@ pub fn test_task_with_coroutine(num_data: usize, num_tasks: usize) -> Duration {
             let right = (left + (num_data / num_tasks)).min(num_data);
             #[cfg(feature = "output")]
             println!(
-                "part {}: {:?} [{}, {})",
+                "part {}: CoroutineId({}) [{}, {})",
                 i,
-                thread::current().id(),
+                thread::current().id().as_u64(),
                 left,
                 right
             );
@@ -97,7 +97,7 @@ pub fn test_task_with_coroutine(num_data: usize, num_tasks: usize) -> Duration {
             let partial_sum: u64 = vec[left..right].iter().map(sqrt).sum();
 
             #[cfg(feature = "output")]
-            println!("part {}: {:?} finished", i, thread::current().id());
+            println!("part {}: CoroutineId({}) finished", i, thread::current().id().as_u64());
             partial_sum
         }));
     }
